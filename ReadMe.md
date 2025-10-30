@@ -6,6 +6,8 @@
 
 📌 Discord: https://discord.gg/fnsWGDy2mm
 
+🍺 https://buymeacoffee.com/buddychewchew
+
 ---------------------------------------------
 
 ## 🏠 REPO HOMEPAGE: MY REPOS
