@@ -1,7 +1,7 @@
  
 ![alt text](https://github.com/BuddyChewChew/My-Streams/blob/main/Logos/Gemini_Generated_Image_qek3m4qek3m4qek3.png?raw=true "Buddy Live")
 
-<script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="daves531" data-color="#BD5FFF" data-emoji="☕" data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000" data-font-color="#ffffff" data-coffee-color="#FFDD00" ></script>
+☕ buymeacoffee.com/daves531
 
 ---------------------------------------------
 
