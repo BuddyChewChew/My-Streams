@@ -1,8 +1,9 @@
  
 ![alt text](https://github.com/BuddyChewChew/My-Streams/blob/main/Logos/Gemini_Generated_Image_qek3m4qek3m4qek3.png?raw=true "Buddy Live")
 
-☕ buymeacoffee.com/daves531
+☕ ![alt text]()
 
+[https://github.com/BuddyChewChew/My-Streams/blob/main/Logos/Gemini_Generated_Image_qek3m4qek3m4qek3.png?raw=true "Buddy Live"](buymeacoffee.com/daves531)
 ---------------------------------------------
 
 📌 Discord: https://discord.gg/fnsWGDy2mm
