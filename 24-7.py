@@ -7,7 +7,8 @@ import sys
 json_urls = [
     "https://magnetic.website/MAD_TITAN_SPORTS/TOOLS/METAL/luc-247.json",
     "https://magnetic.website/MAD_TITAN_SPORTS/TOOLS/METAL/ky-247.json",
-    "https://magnetic.website/MAD_TITAN_SPORTS/TOOLS/METAL/sps-247.json"
+    "https://magnetic.website/MAD_TITAN_SPORTS/TOOLS/METAL/sps-247.json",
+    "https://magnetic.website/MAD_TITAN_SPORTS/TOOLS/METAL/zpenn-247.json
 ]
 
 STATIC_TVG_ID = "24.7.Dummy.us"
