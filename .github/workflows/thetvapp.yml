@@ -49,7 +49,7 @@ jobs:
             exit 0
           fi
 
-          git commit -m "🍗 Updated TheTVApp.m3u8 $(date -u +'%a %b %d %T UTC %Y')"
+          git commit -m "🎄 Updated TheTVApp.m3u8 $(date -u +'%a %b %d %T UTC %Y')"
 
           # Small random delay to reduce collisions
           sleep $((RANDOM % 10 + 5))
