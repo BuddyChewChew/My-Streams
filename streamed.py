@@ -72,7 +72,7 @@ def get_all_matches():
     for ep in endpoints:
         try:
             log.info(f"📡 Fetching {ep} matches...")
-            res = requests.get(f"https://streamed.pk/api/matches/{ep}", timeout=10)
+            res = requests.get(f"https://streami.su/api/matches/{ep}", timeout=10)
             res.raise_for_status()
             data = res.json()
             log.info(f"✅ {ep}: {len(data)} matches")
@@ -88,7 +88,7 @@ def get_embed_urls_from_api(source):
         s_name, s_id = source.get("source"), source.get("id")
         if not s_name or not s_id:
             return []
-        res = requests.get(f"https://streamed.pk/api/stream/{s_name}/{s_id}", timeout=6)
+        res = requests.get(f"https://streami.su/api/stream/{s_name}/{s_id}", timeout=6)
         res.raise_for_status()
         data = res.json()
         return [d.get("embedUrl") for d in data if d.get("embedUrl")]
@@ -193,10 +193,10 @@ def build_logo_url(match):
     for side in ["away", "home"]:
         badge = teams.get(side, {}).get("badge")
         if badge:
-            url = f"https://streamed.pk/api/images/badge/{badge}.webp"
+            url = f"https://streami.su/api/images/badge/{badge}.webp"
             return validate_logo(url, cat), cat
     if match.get("poster"):
-        url = f"https://streamed.pk/api/images/proxy/{match['poster']}.webp"
+        url = f"https://streami.su/api/images/proxy/{match['poster']}.webp"
         return validate_logo(url, cat), cat
     return validate_logo(None, cat), cat
 
