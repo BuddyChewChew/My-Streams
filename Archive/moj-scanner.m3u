@@ -694,6 +694,9 @@ https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/Crime_a
 #EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="CTV.Nature.ca2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/canada/ctv-nature-channel-ca.png?raw=true" tvg-name="CTV NATURE", CTV NATURE
 https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/Discovery_Science/index.m3u8
 
+#EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="DAZN1.be" tvg-logo="" tvg-name="DAZN 1", DAZN 1
+https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/DAZN_1/index.m3u8
+
 #EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="Destination.America.HD.us2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/united-states/destination-america-us.png?raw=true" tvg-name="Destination America", DESTINATION AMERICA
 https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/Destination_America/index.m3u8
 
@@ -925,7 +928,8 @@ https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/Nat_Geo
 https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/NBA_TV/index.m3u8
 
 #EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="Golf.Channel.HD.us2" tvg-logo="http://schedulesdirect-api20141201-logos.s3.dualstack.us-east-1.amazonaws.com/stationLogos/s14899_dark_360w_270h.png" tvg-name="NBC Golf", NBC GOLF
-http://cord-cutter.net:8080/bn80NG/909467/9806
+https://moveonjoy-scan.vercel.app/api/scan?url=https://fl31.moveonjoy.com/GOLF/index.m3u8
+# http://cord-cutter.net:8080/bn80NG/909467/9806
 
 #EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="NewsNation.us2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/united-states/news-nation-us.png?raw=true" tvg-name="NewsNation", NEWSNATION
 https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/NEWS_NATION/index.m3u8
