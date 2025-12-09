@@ -883,6 +883,9 @@ https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/LOVE_NA
 #EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="Magnolia.Network.HD.us2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/united-states/magnolia-network-us.png?raw=true" tvg-name="MAGNOLIA NETWORK", MAGNOLIA NETWORK
 https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/DIY/index.m3u8
 
+#EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="Marquee.Sports.Network.HD.us2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/united-states/marquee-sports-network-us.png?raw=true" tvg-name="MARQUEE SPORTS", MARQUEE SPORTS
+https://fl1.moveonjoy.com/MARQUEE_SPORTS_NETWORK/index.m3u8
+
 #EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="Me.TV.Network.us2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/united-states/me-tv-us.png?raw=true" tvg-name="MeTV", METV
 https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/ME_TV/index.m3u8
 
@@ -900,9 +903,6 @@ https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/EPIX_DR
 
 #EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="RACER.Network.HD.us2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/united-states/racer-network-us.png?raw=true" tvg-name="RACER", RACER
 https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/MAV_TV/index.m3u8
-
-#EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="Marquee.Sports.Network.HD.us2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/united-states/marquee-sports-network-us.png?raw=true" tvg-name="MARQUEE SPORTS", MARQUEE SPORTS
-https://fl1.moveonjoy.com/MARQUEE_SPORTS_NETWORK/index.m3u8
 
 #EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="MLB.Network.HD.us2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/united-states/mlb-network-us.png?raw=true" tvg-name="MLB Network", MLB NETWORK
 https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/MLB_NETWORK/index.m3u8
@@ -1027,8 +1027,8 @@ https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/SHOWTIM
 #EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="Smithsonian.HD.Network.us2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/united-states/smithsonian-channel-us.png?raw=true" tvg-name="SMITHSONIAN CHANNEL", SMITHSONIAN CHANNEL
 https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/SMITHSONIAN_CHANNEL/index.m3u8
 
-#EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="Sony.Movie.Channel.HD.us2" tvg-logo="" tvg-name="SONY MOVIE CHANNEL", SONY MOVIE CHANNEL
-https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/Sony_Movie_Channel/index.m3u8
+# EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="Sony.Movie.Channel.HD.us2" tvg-logo="" tvg-name="SONY MOVIE CHANNEL", SONY MOVIE CHANNEL
+# https://moveonjoy-scan.vercel.app/api/scan?url=https://fl1.moveonjoy.com/Sony_Movie_Channel/index.m3u8
 
 #EXTINF:-1 group-title="MoveOnJoy Cable" tvg-id="Sportsnet.East.ca2" tvg-logo="https://github.com/tv-logo/tv-logos/blob/main/countries/canada/sportsnet-sn-ca.png?raw=true" tvg-name="SPORTSNET EAST", SPORTSNET EAST
 https://moveonjoy-scan.vercel.app/api/scan?url=http://fl1.moveonjoy.com/SPORTSNET/mpegts
