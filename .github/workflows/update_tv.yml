@@ -86,6 +86,6 @@ jobs:
     - name: Commit and push changes
       if: steps.git-check.outputs.changes_detected == 'true'
       run: |
-        git commit -m "🎄 Updated tv.m3u"
+        git commit -m "✅ Updated tv.m3u"
         git pull --rebase origin main
         git push
