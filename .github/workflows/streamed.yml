@@ -53,7 +53,7 @@ jobs:
             exit 0
           fi
 
-          git commit -m "🎄 Updated StreamedSU.m3u8 $(date -u +'%a %b %d %T UTC %Y')"
+          git commit -m "✅ Updated StreamedSU.m3u8 $(date -u +'%a %b %d %T UTC %Y')"
 
           sleep $((RANDOM % 10 + 5))
 
