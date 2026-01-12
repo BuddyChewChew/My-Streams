@@ -2,56 +2,67 @@ name: ▶️ Update TheTVApp Playlist
 
 on:
   schedule:
-    - cron: '0 * * * *' # Runs exactly at the start of every hour
-  workflow_dispatch:      # Allows you to click "Run Workflow" manually to test
+    - cron: '0 * * * *'  # ⏰ Run every hour
+  workflow_dispatch:
 
-concurrency:
-  group: playlist-update
-  cancel-in-progress: true
+permissions:
+  contents: write
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # Fetches full history to make rebasing possible
+          fetch-depth: 0
 
-      - name: Set up Python
+      - name: 🐍 Set up Python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
-      - name: Install Dependencies
+      - name: 📦 Install Python dependencies & Playwright
         run: |
-          pip install playwright asyncio
-          playwright install firefox --with-deps
+          python -m pip install --upgrade pip
+          pip install playwright urllib3 aiohttp
+          playwright install firefox
+          playwright install-deps
 
-      - name: Run Scraper
-        run: python tv.py 
+      - name: 🎯 Run scraping script
+        run: python tv.py
 
-      - name: Commit and Push Changes
+      - name: 💾 Commit & Safely Push if Playlist Changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Add the specific playlist file
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage the output
           git add TheTVApp.m3u8
-          
-          # Only proceed if there are actual changes to the file
-          if git diff --staged --quiet; then
-            echo "No changes detected in the playlist. Skipping push."
-          else
-            git commit -m "✅ Updated TheTVApp.m3u8 $(date)"
-            
-            # The "Safe Push" Strategy:
-            # 1. Pull latest changes from GitHub (main branch)
-            # 2. Put your new playlist update on top of those changes
-            # 3. Push it back.
-            git pull --rebase origin main
-            git push origin main
+
+          # Check if file actually changed
+          if git diff --cached --quiet; then
+            echo "✅ No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "🎄 Updated TheTVApp.m3u8 $(date -u +'%a %b %d %T UTC %Y')"
+
+          # Small random delay to reduce collisions
+          sleep $((RANDOM % 10 + 5))
+
+          # Safe push, fallback merge if rejected
+          if ! git push origin main; then
+            echo "⚠️ Push rejected. Trying safe fetch + merge..."
+            git pull origin main --rebase || {
+              echo "❌ Rebase failed. Exiting to avoid corruption."
+              exit 1
+            }
+            git push origin main || {
+              echo "❌ Second push failed. Remote changed again."
+              exit 1
+            }
           fi
