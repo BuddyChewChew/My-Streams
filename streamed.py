@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from playwright.async_api import async_playwright
 
-# Logging Setup
+# Logging Setup integrated from job-logs.txt [cite: 360, 427]
 logging.basicConfig(
     filename="scrape.log",
     level=logging.INFO,
@@ -30,6 +30,7 @@ async def extract_m3u8(page, embed_url):
     async def handle_request(request):
         nonlocal found_url
         if ".m3u8" in request.url and not found_url:
+            # Filter out known analytics/player provider URLs
             if "prd.jwpltx.com" not in request.url:
                 found_url = request.url
                 log.info(f"  ⚡ Captured: {found_url[:60]}...")
@@ -37,41 +38,39 @@ async def extract_m3u8(page, embed_url):
     page.on("request", handle_request)
 
     try:
-        # Prevent "Cannot GET" by setting extra headers for this specific navigation
+        # Prevent "Cannot GET" by setting specific Referer for the target domain
         await page.set_extra_http_headers({"Referer": "https://streami.su/"})
         await page.goto(embed_url, wait_until="load", timeout=20000)
         await asyncio.sleep(3)
 
-        # Function to click the player, even if it's inside an iframe
         async def try_click_player():
-            # Try main page center
+            # Standard player centers for common sources (Charlie/Delta) [cite: 386, 427]
             await page.mouse.click(320, 240)
-            # Try all frames center (common for charlie/delta sources)
             for frame in page.frames:
                 try:
                     await frame.click("body", timeout=500, position={"x": 320, "y": 240})
                 except:
                     continue
 
-        # First Click (Triggers Ad)
+        # First Click: Often triggers a popup ad [cite: 387, 427]
         await try_click_player()
         log.info("  👆 Interaction 1 (Ad Trigger)")
         await asyncio.sleep(2)
 
-        # Close popups
+        # Close any spawned ad tabs [cite: 428]
         for p in page.context.pages:
             if p != page: await p.close()
 
-        # Second Click (Starts Video)
+        # Second Click: Triggers actual playback [cite: 429]
         await try_click_player()
         log.info("  ▶️ Interaction 2 (Play Trigger)")
 
-        # Poll for URL
+        # Poll for network capture
         for _ in range(20):
             if found_url: break
             await asyncio.sleep(0.5)
 
-        # Final Fallback: Search HTML
+        # Fallback: HTML Content Scan
         if not found_url:
             content = await page.content()
             match = re.search(r'(https?://[^\s"\']+\.m3u8[^\s"\']*)', content)
@@ -99,14 +98,15 @@ def get_embeds(source):
 
 async def run():
     matches = get_matches()
-    if not matches: return
+    if not matches: 
+        log.error("No live matches found.")
+        return
 
     playlist = ["#EXTM3U"]
     success = 0
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        # Setting a standard user agent at the context level
         context = await browser.new_context(
             user_agent=CUSTOM_HEADERS["User-Agent"],
             viewport={'width': 1280, 'height': 720}
@@ -114,6 +114,10 @@ async def run():
 
         for i, match in enumerate(matches, 1):
             title = match.get("title", "Unknown")
+            # Re-integrating metadata for better M3U experience
+            group = match.get("category", "Sports")
+            logo = match.get("logo", "")
+            
             sources = match.get("sources", [])
             log.info(f"\n🎯 [{i}/{len(matches)}] {title}")
 
@@ -131,19 +135,21 @@ async def run():
                 if stream_found: break
 
             if stream_found:
-                playlist.append(f'#EXTINF:-1, {title}')
+                # Integrated M3U8 tags for Logos and Groups
+                playlist.append(f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group}", {title}')
                 playlist.append(f'#EXTVLCOPT:http-referrer={CUSTOM_HEADERS["Referer"]}')
                 playlist.append(f'#EXTVLCOPT:http-user-agent={CUSTOM_HEADERS["User-Agent"]}')
                 playlist.append(stream_found)
                 success += 1
-                log.info("  ✅ SUCCESS")
+                log.info(f"  ✅ SUCCESS: {title}") [cite: 430]
             else:
-                log.info("  ❌ FAILED")
+                log.info(f"  ❌ FAILED: {title}")
 
             await page.close()
 
         await browser.close()
 
+    # Save final playlist
     with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
         f.write("\n".join(playlist))
     log.info(f"\n🎉 Done. {success} streams added.")
