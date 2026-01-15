@@ -7,15 +7,10 @@ from playwright.async_api import async_playwright
 
 # Logging Setup
 logging.basicConfig(
-    filename="scrape.log",
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    datefmt="%H:%M:%S",
 )
-console = logging.StreamHandler()
-console.setLevel(logging.INFO)
-console.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-8s | %(message)s", "%H:%M:%S"))
-logging.getLogger("").addHandler(console)
 log = logging.getLogger("scraper")
 
 CUSTOM_HEADERS = {
@@ -29,61 +24,67 @@ async def extract_m3u8(page, embed_url):
     
     async def handle_request(request):
         nonlocal found_url
-        if ".m3u8" in request.url and not found_url:
-            if "prd.jwpltx.com" not in request.url and "telemetry" not in request.url:
-                found_url = request.url
-                log.info(f"  ⚡ Captured: {found_url[:70]}...")
+        url = request.url
+        if ".m3u8" in url and not found_url:
+            if "prd.jwpltx.com" not in url and "telemetry" not in url:
+                found_url = url
+                log.info(f"  ⚡ Captured: {url[:60]}...")
 
     page.on("request", handle_request)
 
     try:
-        # 1. Bypass "Cannot GET" and Load
+        # 1. Set Referer to bypass the "Cannot GET" error
         await page.set_extra_http_headers({"Referer": "https://streami.su/"})
-        await page.goto(embed_url, wait_until="networkidle", timeout=25000)
-        await asyncio.sleep(4)
+        
+        # 2. Go to URL and wait for the page to actually be ready
+        await page.goto(embed_url, wait_until="domcontentloaded", timeout=25000)
+        await asyncio.sleep(5) 
 
-        # 2. Try to find the actual Play button selector first
-        play_selectors = [".jw-display-icon-container", ".vjs-big-play-button", "button.play", ".plyr__play-large"]
+        # 3. Smart Clicker: Find the hidden play button or the video overlay
+        # This covers almost all Delta/Charlie player types
+        selectors = [
+            "canvas", 
+            ".jw-video", 
+            ".jw-display-icon-container", 
+            "#player", 
+            "video",
+            "body"
+        ]
+        
         clicked = False
-        for selector in play_selectors:
+        for sel in selectors:
             try:
-                if await page.is_visible(selector, timeout=2000):
-                    await page.click(selector)
-                    clicked = True
-                    break
-            except: continue
-
-        # 3. If no selector found, use coordinate clicking
+                # We use 'force=True' to click even if the site tries to hide the button from bots
+                await page.click(sel, timeout=1000, force=True)
+                clicked = True
+                break
+            except:
+                continue
+        
         if not clicked:
             await page.mouse.click(320, 240)
-        
-        log.info("  👆 Interaction 1 (Start/Ad)")
+
+        log.info("  👆 Interaction 1 (Ad/Start)")
         await asyncio.sleep(3)
 
-        # 4. Clean up any Ad tabs
+        # 4. Close any Ad tabs that opened
         for p in page.context.pages:
-            if p != page: await p.close()
+            if p != page:
+                try: await p.close()
+                except: pass
 
-        # 5. Final click to trigger the stream
-        await page.mouse.click(320, 240)
-        log.info("  ▶️ Interaction 2 (Triggering Stream)")
+        # 5. Second Interaction to start playback
+        await page.mouse.click(320, 240, click_count=2)
+        log.info("  ▶️ Interaction 2 (Playback)")
 
-        # 6. Wait for capture
+        # 6. Poll longer for the stream to appear
         for _ in range(30):
             if found_url: break
             await asyncio.sleep(0.5)
 
-        # Fallback HTML Scan
-        if not found_url:
-            content = await page.content()
-            match = re.search(r'(https?://[^\s"\']+\.m3u8[^\s"\']*)', content)
-            if match:
-                found_url = match.group(1)
-                log.info("  🔎 Found via HTML Regex")
-
         return found_url
     except Exception as e:
-        log.warning(f"  ⚠️ Extract Error: {str(e)[:50]}")
+        log.warning(f"  ⚠️ Error: {str(e)[:50]}")
         return None
 
 def get_matches():
@@ -102,18 +103,19 @@ def get_embeds(source):
 async def run():
     matches = get_matches()
     if not matches:
-        log.info("No live matches.")
+        log.info("No live matches found.")
         return
 
     playlist = ["#EXTM3U"]
     success_count = 0
 
     async with async_playwright() as p:
-        # LAUNCH WITH STEALTH ARGUMENTS
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"]
-        )
+        # Launch with specific flags to hide the 'automation' signature
+        browser = await p.chromium.launch(headless=True, args=[
+            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox"
+        ])
+        
         context = await browser.new_context(
             user_agent=CUSTOM_HEADERS["User-Agent"],
             viewport={'width': 1280, 'height': 720}
@@ -153,7 +155,7 @@ async def run():
 
     with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
         f.write("\n".join(playlist))
-    log.info(f"\n🎉 Finished. {success_count} streams captured.")
+    log.info(f"\n🎉 Finished. {success_count} streams added.")
 
 if __name__ == "__main__":
     asyncio.run(run())
