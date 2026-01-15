@@ -18,7 +18,6 @@ console.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-8s | %(messag
 logging.getLogger("").addHandler(console)
 log = logging.getLogger("scraper")
 
-# Settings - Ensure Referer matches the Origin for the 403 bypass
 CUSTOM_HEADERS = {
     "Origin": "https://embedsports.top",
     "Referer": "https://embedsports.top/",
@@ -26,61 +25,67 @@ CUSTOM_HEADERS = {
 }
 
 async def extract_m3u8(page, embed_url):
-    found = None
+    found_url = None
+    
+    # 1. Network Interception Listener
+    async def handle_request(request):
+        nonlocal found_url
+        url = request.url
+        if ".m3u8" in url and not found_url:
+            if "prd.jwpltx.com" not in url and "telemetry" not in url:
+                found_url = url
+                log.info(f"  ⚡ Captured via Network: {url[:60]}...")
+
+    page.on("request", handle_request)
+
     try:
-        async def on_request(request):
-            nonlocal found
-            # Capture the .m3u8 but ignore tracking manifests
-            if ".m3u8" in request.url and not found:
-                if "prd.jwpltx.com" not in request.url and "telemetry" not in request.url:
-                    found = request.url
-                    log.info(f"  ⚡ Captured Stream: {found[:60]}...")
-
-        page.on("request", on_request)
-        
-        # 1. Load the Embed Page
-        await page.goto(embed_url, wait_until="load", timeout=15000)
-        
-        # 2. Click the "Start Button" (First click usually triggers ad)
-        # We target the center of the player where the button usually sits
+        # 2. Navigate to page
+        await page.goto(embed_url, wait_until="load", timeout=20000)
         await asyncio.sleep(2)
-        await page.mouse.click(320, 240) 
-        log.info("  👆 Clicked center (Start Button/Ad Trigger)")
 
-        # 3. Wait and Close Ad Tabs
-        await asyncio.sleep(1.5)
+        # 3. Handle Ad-Click and Player Start
+        # Click center of player
+        await page.mouse.click(320, 240)
+        log.info("  👆 First click (Ad/Start)")
+        await asyncio.sleep(2)
+
+        # Close any popups/ads
         pages = page.context.pages
         if len(pages) > 1:
             for p in pages[1:]:
                 if p != page:
-                    log.info(f"  🚫 Closing ad tab: {p.url[:40]}...")
                     await p.close()
-        
-        # 4. Second Click (Starts the actual video)
+
+        # Click again to play
         await page.mouse.click(320, 240)
-        log.info("  ▶️ Second click (Play Trigger)")
-        
-        # 5. Poll for the .m3u8 request
+        log.info("  ▶️ Second click (Play)")
+
+        # 4. Wait/Poll for URL
         for _ in range(20):
-            if found: break
+            if found_url: break
             await asyncio.sleep(0.5)
 
-        return found
+        # 5. Fallback: Search Page Content via Regex
+        if not found_url:
+            content = await page.content()
+            match = re.search(r'(https?://[^\s"\']+\.m3u8[^\s"\']*)', content)
+            if match:
+                found_url = match.group(1)
+                log.info(f"  🔎 Captured via Regex: {found_url[:60]}...")
+
+        return found_url
     except Exception as e:
-        log.warning(f"  ⚠️ Failed extraction: {str(e)[:60]}")
+        log.warning(f"  ⚠️ Error: {str(e)[:50]}")
         return None
 
 def get_live_matches():
     try:
-        # Fetching directly from the live endpoint
         res = requests.get("https://streami.su/api/matches/live", headers=CUSTOM_HEADERS, timeout=10)
-        res.raise_for_status()
         return res.json()
-    except Exception as e:
-        log.error(f"❌ API Error: {e}")
+    except Exception:
         return []
 
-def get_embed_urls_for_source(source):
+def get_embeds(source):
     try:
         s_name, s_id = source.get("source"), source.get("id")
         res = requests.get(f"https://streami.su/api/stream/{s_name}/{s_id}", headers=CUSTOM_HEADERS, timeout=10)
@@ -88,58 +93,58 @@ def get_embed_urls_for_source(source):
     except:
         return []
 
-async def run_scraper():
+async def run():
     matches = get_live_matches()
     if not matches:
-        log.error("No matches found.")
+        log.info("No live matches found.")
         return
 
-    playlist_lines = ["#EXTM3U"]
-    
+    playlist = ["#EXTM3U"]
+    success_count = 0
+
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        # Context needs the same headers as the requests to maintain session consistency
-        context = await browser.new_context(
-            user_agent=CUSTOM_HEADERS["User-Agent"],
-            extra_http_headers={"Referer": CUSTOM_HEADERS["Referer"]}
-        )
+        # Added arguments to look more like a real browser
+        browser = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
+        context = await browser.new_context(viewport={'width': 1280, 'height': 720})
 
         for i, match in enumerate(matches, 1):
-            title = match.get("title", "Unknown Event")
-            log.info(f"\n🎯 [{i}/{len(matches)}] {title}")
-            
+            title = match.get("title", "Unknown")
             sources = match.get("sources", [])
+            log.info(f"\n🎯 [{i}/{len(matches)}] {title}")
+
             if not sources:
-                log.info("  ❌ No sources available for this event.")
                 continue
 
-            extracted_url = None
+            found_stream = None
             page = await context.new_page()
-            
+
+            # Try sources one by one
             for source in sources:
-                embeds = get_embed_urls_for_source(source)
-                for embed in embeds:
-                    log.info(f"  ↳ Trying: {embed[:50]}...")
-                    extracted_url = await extract_m3u8(page, embed)
-                    if extracted_url: break
-                if extracted_url: break
-            
-            if extracted_url:
-                # Add VLC specific options to the playlist to bypass the 403 error
-                playlist_lines.append(f'#EXTINF:-1, {title}')
-                playlist_lines.append(f'#EXTVLCOPT:http-referrer={CUSTOM_HEADERS["Referer"]}')
-                playlist_lines.append(f'#EXTVLCOPT:http-user-agent={CUSTOM_HEADERS["User-Agent"]}')
-                playlist_lines.append(extracted_url)
-                log.info(f"  ✅ Stream verified.")
-            
+                embed_urls = get_embeds(source)
+                for url in embed_urls:
+                    log.info(f"  ↳ Trying: {url[:50]}...")
+                    found_stream = await extract_m3u8(page, url)
+                    if found_stream: break
+                if found_stream: break
+
+            if found_stream:
+                playlist.append(f'#EXTINF:-1, {title}')
+                playlist.append(f'#EXTVLCOPT:http-referrer={CUSTOM_HEADERS["Referer"]}')
+                playlist.append(f'#EXTVLCOPT:http-user-agent={CUSTOM_HEADERS["User-Agent"]}')
+                playlist.append(found_stream)
+                success_count += 1
+                log.info("  ✅ Success")
+            else:
+                log.info("  ❌ No stream found")
+
             await page.close()
 
         await browser.close()
 
-    # Save the playlist
     with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
-        f.write("\n".join(playlist_lines))
-    log.info("\n🎉 Playlist generation complete.")
+        f.write("\n".join(playlist))
+    
+    log.info(f"\n🎉 Finished. Created playlist with {success_count} streams.")
 
 if __name__ == "__main__":
-    asyncio.run(run_scraper())
+    asyncio.run(run())
