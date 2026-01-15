@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from playwright.async_api import async_playwright
 
-# Logging Setup integrated from job-logs.txt [cite: 360, 427]
+# Logging Setup
 logging.basicConfig(
     filename="scrape.log",
     level=logging.INFO,
@@ -30,57 +30,60 @@ async def extract_m3u8(page, embed_url):
     async def handle_request(request):
         nonlocal found_url
         if ".m3u8" in request.url and not found_url:
-            # Filter out known analytics/player provider URLs
-            if "prd.jwpltx.com" not in request.url:
+            if "prd.jwpltx.com" not in request.url and "telemetry" not in request.url:
                 found_url = request.url
-                log.info(f"  ⚡ Captured: {found_url[:60]}...")
+                log.info(f"  ⚡ Captured: {found_url[:70]}...")
 
     page.on("request", handle_request)
 
     try:
-        # Prevent "Cannot GET" by setting specific Referer for the target domain
+        # 1. Bypass "Cannot GET" and Load
         await page.set_extra_http_headers({"Referer": "https://streami.su/"})
-        await page.goto(embed_url, wait_until="load", timeout=20000)
+        await page.goto(embed_url, wait_until="networkidle", timeout=25000)
+        await asyncio.sleep(4)
+
+        # 2. Try to find the actual Play button selector first
+        play_selectors = [".jw-display-icon-container", ".vjs-big-play-button", "button.play", ".plyr__play-large"]
+        clicked = False
+        for selector in play_selectors:
+            try:
+                if await page.is_visible(selector, timeout=2000):
+                    await page.click(selector)
+                    clicked = True
+                    break
+            except: continue
+
+        # 3. If no selector found, use coordinate clicking
+        if not clicked:
+            await page.mouse.click(320, 240)
+        
+        log.info("  👆 Interaction 1 (Start/Ad)")
         await asyncio.sleep(3)
 
-        async def try_click_player():
-            # Standard player centers for common sources (Charlie/Delta) [cite: 386, 427]
-            await page.mouse.click(320, 240)
-            for frame in page.frames:
-                try:
-                    await frame.click("body", timeout=500, position={"x": 320, "y": 240})
-                except:
-                    continue
-
-        # First Click: Often triggers a popup ad [cite: 387, 427]
-        await try_click_player()
-        log.info("  👆 Interaction 1 (Ad Trigger)")
-        await asyncio.sleep(2)
-
-        # Close any spawned ad tabs [cite: 428]
+        # 4. Clean up any Ad tabs
         for p in page.context.pages:
             if p != page: await p.close()
 
-        # Second Click: Triggers actual playback [cite: 429]
-        await try_click_player()
-        log.info("  ▶️ Interaction 2 (Play Trigger)")
+        # 5. Final click to trigger the stream
+        await page.mouse.click(320, 240)
+        log.info("  ▶️ Interaction 2 (Triggering Stream)")
 
-        # Poll for network capture
-        for _ in range(20):
+        # 6. Wait for capture
+        for _ in range(30):
             if found_url: break
             await asyncio.sleep(0.5)
 
-        # Fallback: HTML Content Scan
+        # Fallback HTML Scan
         if not found_url:
             content = await page.content()
             match = re.search(r'(https?://[^\s"\']+\.m3u8[^\s"\']*)', content)
             if match:
                 found_url = match.group(1)
-                log.info("  🔎 Captured via HTML Scan")
+                log.info("  🔎 Found via HTML Regex")
 
         return found_url
     except Exception as e:
-        log.warning(f"  ⚠️ Page error: {str(e)[:50]}")
+        log.warning(f"  ⚠️ Extract Error: {str(e)[:50]}")
         return None
 
 def get_matches():
@@ -98,15 +101,19 @@ def get_embeds(source):
 
 async def run():
     matches = get_matches()
-    if not matches: 
-        log.error("No live matches found.")
+    if not matches:
+        log.info("No live matches.")
         return
 
     playlist = ["#EXTM3U"]
-    success = 0
+    success_count = 0
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        # LAUNCH WITH STEALTH ARGUMENTS
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"]
+        )
         context = await browser.new_context(
             user_agent=CUSTOM_HEADERS["User-Agent"],
             viewport={'width': 1280, 'height': 720}
@@ -114,10 +121,6 @@ async def run():
 
         for i, match in enumerate(matches, 1):
             title = match.get("title", "Unknown")
-            # Re-integrating metadata for better M3U experience
-            group = match.get("category", "Sports")
-            logo = match.get("logo", "")
-            
             sources = match.get("sources", [])
             log.info(f"\n🎯 [{i}/{len(matches)}] {title}")
 
@@ -135,24 +138,22 @@ async def run():
                 if stream_found: break
 
             if stream_found:
-                # Integrated M3U8 tags for Logos and Groups
-                playlist.append(f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group}", {title}')
+                playlist.append(f'#EXTINF:-1, {title}')
                 playlist.append(f'#EXTVLCOPT:http-referrer={CUSTOM_HEADERS["Referer"]}')
                 playlist.append(f'#EXTVLCOPT:http-user-agent={CUSTOM_HEADERS["User-Agent"]}')
                 playlist.append(stream_found)
-                success += 1
-                log.info(f"  ✅ SUCCESS: {title}") [cite: 430]
+                success_count += 1
+                log.info(f"  ✅ SUCCESS")
             else:
-                log.info(f"  ❌ FAILED: {title}")
+                log.info(f"  ❌ FAILED")
 
             await page.close()
 
         await browser.close()
 
-    # Save final playlist
     with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
         f.write("\n".join(playlist))
-    log.info(f"\n🎉 Done. {success} streams added.")
+    log.info(f"\n🎉 Finished. {success_count} streams captured.")
 
 if __name__ == "__main__":
     asyncio.run(run())
