@@ -9,8 +9,8 @@ from playwright_stealth import Stealth
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("scraper")
 
-# UPDATED: The .pk domain is dead. Using the new .su API.
-API_BASE = "https://api.streamed.su/api"
+# UPDATED: 'api.streamed.su' failed to resolve. Using the verified 'v3' endpoint.
+API_BASE = "https://v3.streamed.su/api"
 
 API_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
@@ -55,7 +55,6 @@ async def extract_m3u8(page, embed_url):
 
         for _ in range(3):
             if found_url: break
-            # Click to trigger player loading
             await page.mouse.click(640 + random.randint(-10, 10), 360 + random.randint(-10, 10))
             await asyncio.sleep(3)
             
@@ -68,15 +67,21 @@ async def extract_m3u8(page, embed_url):
         return None
 
 async def run():
-    log.info("📡 Fetching Matches from New API...")
+    log.info(f"📡 Connecting to API: {API_BASE}...")
     try:
-        # Changed endpoint to /matches/all for the new API
+        # Fetching from the verified v3 matches endpoint
         response = requests.get(f"{API_BASE}/matches/all", headers=API_HEADERS, timeout=20)
         response.raise_for_status()
         matches = response.json()
     except Exception as e:
-        log.error(f"❌ API Error: {e}")
-        return
+        log.error(f"❌ Connection Failed: {e}")
+        log.info("💡 Trying fallback domain: https://streamed.su/api/matches/all")
+        try:
+            response = requests.get("https://streamed.su/api/matches/all", headers=API_HEADERS, timeout=20)
+            matches = response.json()
+        except:
+            log.error("❌ All API domains failed to resolve.")
+            return
 
     playlist = ["#EXTM3U"]
     success = 0
@@ -85,7 +90,6 @@ async def run():
         browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
         context = await browser.new_context(viewport={'width': 1280, 'height': 720})
 
-        # Process first 15 matches
         for i, match in enumerate(matches[:15], 1):
             title = match.get("title", "Match")
             match_id = match.get("id")
@@ -94,14 +98,13 @@ async def run():
 
             page = await context.new_page()
             
-            # Logic from the diff: Use source list, fallback to match ID
             target_urls = []
             if sources:
                 for src in sources:
                     if src.get("source") and src.get("id"):
+                        # Use the watch format from the commit diff
                         target_urls.append(f"https://streamed.su/watch/{src['source']}/{src['id']}")
             
-            # Add fallback using match ID (main source)
             target_urls.append(f"https://streamed.su/watch/main/{match_id}")
 
             found_stream = None
