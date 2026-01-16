@@ -1,10 +1,10 @@
 import asyncio
-import re
 import requests
 import logging
+import os
 from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 
-# Logging Setup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("scraper")
 
@@ -18,38 +18,39 @@ async def extract_m3u8(page, embed_url):
     
     async def intercept_request(request):
         nonlocal found_url
-        if ".m3u8" in request.url and not found_url:
-            if "telemetry" not in request.url and "prd.jwpltx" not in request.url:
-                found_url = request.url
-                log.info(f"  ⚡ Captured: {found_url[:60]}...")
+        url = request.url
+        if ".m3u8" in url and not found_url:
+            if all(x not in url for x in ["telemetry", "prd.jwpltx", "omtrdc"]):
+                found_url = url
+                log.info(f"  ⚡ Captured: {url[:60]}...")
 
     page.on("request", intercept_request)
 
     try:
-        await page.set_extra_http_headers({"Referer": "https://streami.su/"})
-        await page.goto(embed_url, wait_until="load", timeout=30000)
-        await asyncio.sleep(5)
+        # Apply Stealth to this specific page
+        await stealth_async(page)
+        
+        await page.goto(embed_url, wait_until="networkidle", timeout=30000)
+        await asyncio.sleep(4)
 
-        # Bypass overlays with a smart click
+        # Human-like interaction: random delay + click
+        await page.mouse.move(640, 360)
         await page.mouse.click(640, 360)
-        log.info("  👆 Interaction 1 (Ad/Overlay)")
+        log.info("  👆 Interaction 1 (Bypass)")
         await asyncio.sleep(2)
 
-        # Close popups
-        for p in page.context.pages:
-            if p != page: await p.close()
+        # Force a second interaction if no stream yet
+        if not found_url:
+            await page.mouse.dblclick(640, 360)
+            log.info("  ▶️ Interaction 2 (Retry)")
 
-        # Trigger Playback
-        await page.mouse.dblclick(640, 360)
-        log.info("  ▶️ Interaction 2 (Start Stream)")
-
-        for _ in range(25):
+        for _ in range(20):
             if found_url: break
             await asyncio.sleep(1)
 
         return found_url
     except Exception as e:
-        log.warning(f"  ⚠️ Page error: {str(e)[:50]}")
+        log.warning(f"  ⚠️ Timeout/Error: {str(e)[:40]}")
         return None
 
 async def run():
@@ -62,16 +63,26 @@ async def run():
     success_count = 0
 
     async with async_playwright() as p:
-        # Launch with automation bypass
-        browser = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
-        context = await browser.new_context(user_agent=HEADERS["User-Agent"])
+        # Use a persistent context to store "cookies" and look like a real browser
+        user_data_dir = "./browser_data"
+        browser_context = await p.chromium.launch_persistent_context(
+            user_data_dir,
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-infobars"
+            ],
+            viewport={'width': 1920, 'height': 1080},
+            user_agent=HEADERS["User-Agent"]
+        )
 
         for i, match in enumerate(matches[:15], 1):
             title = match.get("title", "Unknown")
             sources = match.get("sources", [])
             log.info(f"\n🎯 [{i}/{len(matches)}] {title}")
 
-            page = await context.new_page()
+            page = await browser_context.new_page()
             stream_found = None
 
             for source in sources:
@@ -95,9 +106,8 @@ async def run():
                 log.info(f"  ❌ FAILED")
             await page.close()
 
-        await browser.close()
+        await browser_context.close()
 
-    # Save with the EXACT filename the YML is looking for
     with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
         f.write("\n".join(playlist))
     log.info(f"\n🎉 Finished. {success_count} streams added.")
