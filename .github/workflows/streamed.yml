@@ -11,7 +11,7 @@ permissions:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # Increased slightly for more matches
+    timeout-minutes: 20
 
     steps:
       - name: 📥 Checkout repository
@@ -31,7 +31,6 @@ jobs:
 
       - name: 🎯 Run Scraper
         run: |
-          # Use xvfb to provide a virtual display for Playwright
           xvfb-run --server-args="-screen 0 1280x720x24" --auto-servernum python streamed.py
         env:
           PYTHONUNBUFFERED: 1
@@ -40,8 +39,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           
           if [ -f StreamedSU.m3u8 ]; then
             git add StreamedSU.m3u8
