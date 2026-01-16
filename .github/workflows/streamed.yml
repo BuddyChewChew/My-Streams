@@ -2,7 +2,7 @@ name: ▶️ Update StreamedSU Playlist
 
 on:
   schedule:
-    - cron: '0 * * * *' # Runs every hour
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -14,21 +14,21 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: 📥 Checkout Code
+      - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      - name: 🐍 Setup Python
+      - name: 🐍 Python Setup
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: 📦 Install Requirements
+      - name: 📦 Install Deps
         run: |
           pip install playwright requests playwright-stealth
           python -m playwright install chromium
           python -m playwright install-deps chromium
 
-      - name: 🎯 Run Scraper (with Virtual Display)
+      - name: 🎯 Run Scraper
         run: |
           xvfb-run --server-args="-screen 0 1280x720x24" --auto-servernum python streamed.py
         env:
@@ -44,7 +44,7 @@ jobs:
           
           if [ -f StreamedSU.m3u8 ]; then
             git add StreamedSU.m3u8
-            git commit -m "✅ Update Playlist $(date -u +'%D %T UTC')" || exit 0
+            git commit -m "✅ Update $(date -u +'%D %T UTC')" || exit 0
             git pull origin main --rebase
             git push origin main
           fi
