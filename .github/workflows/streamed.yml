@@ -26,13 +26,13 @@ jobs:
       - name: 📦 Install Python dependencies & Playwright
         run: |
           python -m pip install --upgrade pip
+          # Installing latest compatible versions
           pip install playwright requests playwright-stealth
           python -m playwright install chromium
           python -m playwright install-deps chromium
 
       - name: 🎯 Run scraping script
         run: |
-          # Use --auto-servernum to avoid display conflicts
           xvfb-run --auto-servernum python streamed.py
         env:
           PYTHONUNBUFFERED: 1
@@ -46,15 +46,11 @@ jobs:
           
           if [ -f StreamedSU.m3u8 ]; then
             git add StreamedSU.m3u8
-            
             if git diff --cached --quiet; then
               echo "✅ No changes to commit"
               exit 0
             fi
-            
             git commit -m "✅ Updated StreamedSU.m3u8 $(date -u +'%a %b %d %T UTC %Y')"
-            
-            # Use rebase to handle concurrent updates from the bot
             git pull origin main --rebase
             git push origin main
           else
