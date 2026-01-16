@@ -15,45 +15,36 @@ jobs:
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: 🐍 Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: 📦 Install Python dependencies & Playwright
+      - name: 📦 Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # Installing latest compatible versions
           pip install playwright requests playwright-stealth
           python -m playwright install chromium
           python -m playwright install-deps chromium
 
-      - name: 🎯 Run scraping script
+      - name: 🎯 Run Scraper
         run: |
           xvfb-run --auto-servernum python streamed.py
         env:
           PYTHONUNBUFFERED: 1
 
-      - name: 💾 Commit & Safely Push if Playlist Changed
+      - name: 💾 Commit & Push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          if [ -f StreamedSU.m3u8 ]; then
-            git add StreamedSU.m3u8
-            if git diff --cached --quiet; then
-              echo "✅ No changes to commit"
-              exit 0
-            fi
-            git commit -m "✅ Updated StreamedSU.m3u8 $(date -u +'%a %b %d %T UTC %Y')"
+          git add StreamedSU.m3u8
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "✅ Update Playlist $(date -u +'%D %T')"
             git pull origin main --rebase
             git push origin main
-          else
-            echo "❌ StreamedSU.m3u8 not found!"
-            exit 1
           fi
