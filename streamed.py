@@ -20,18 +20,18 @@ async def extract_m3u8(page, embed_url):
     stealth = Stealth()
     
     async def handle_route(route):
-        # FIX: nonlocal must be the first line in the sub-function
-        nonlocal found_url
+        # FIX: The 'nonlocal' declaration MUST come before any other use of the variable
+        nonlocal found_url 
         url = route.request.url
         
-        # Block known tracking and telemetry to reduce detection
+        # Block tracking scripts that trigger bot detection
         if any(x in url for x in ["usrpubtrk.com", "doubleclick", "analytics", "telemetry"]):
             await route.abort()
         elif ".m3u8" in url and not found_url:
-            # Filter out internal JWPlayer or telemetry M3U8s
-            if all(x not in url.lower() for x in ["prd.jwpltx", "telemetry"]):
+            # Avoid capturing internal player telemetry files
+            if "telemetry" not in url.lower():
                 found_url = url
-                log.info(f"  ⚡ Captured: {url[:70]}...")
+                log.info(f"  ⚡ Captured: {url[:60]}...")
             await route.continue_()
         else:
             await route.continue_()
@@ -39,7 +39,6 @@ async def extract_m3u8(page, embed_url):
     await page.route("**/*", handle_route)
 
     try:
-        # Use the updated Class-based Stealth API
         await stealth.apply_stealth_async(page)
         
         parsed = urlparse(embed_url)
@@ -48,91 +47,57 @@ async def extract_m3u8(page, embed_url):
             "Origin": f"{parsed.scheme}://{parsed.netloc}"
         })
         
-        log.info(f"  ↳ Probing: {embed_url[:50]}...")
         await page.goto(embed_url, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(7)
+        await asyncio.sleep(5)
 
-        # Randomized interaction to bypass "click to play" overlays
-        for attempt in range(3):
+        # Randomized clicking to trigger the stream play
+        for _ in range(3):
             if found_url: break
-            
-            rx = 640 + random.randint(-15, 15)
-            ry = 360 + random.randint(-15, 15)
-            
-            log.info(f"  👆 Clicking Play Area at ({rx}, {ry})")
-            await page.mouse.click(rx, ry)
+            await page.mouse.click(640 + random.randint(-10, 10), 360 + random.randint(-10, 10))
             await asyncio.sleep(3)
-
-            # Automatically close ad-tabs that open on click
+            # Close pop-up tabs if they appear
             if len(page.context.pages) > 1:
-                log.info("  🚫 Closing ad popup...")
                 for p in page.context.pages:
                     if p != page: await p.close()
-                await page.mouse.click(rx, ry)
 
         return found_url
     except Exception as e:
-        log.warning(f"  ⚠️ Extraction Error: {str(e)[:40]}")
+        log.warning(f"  ⚠️ Extraction Error: {str(e)[:50]}")
         return None
 
 async def run():
-    log.info("📡 Fetching event schedule from API...")
+    log.info("📡 Fetching events...")
     try:
-        events = requests.get(f"{API_BASE}/event", headers=HEADERS, timeout=15).json()
+        events = requests.get(f"{API_BASE}/event", headers=HEADERS).json()
     except Exception as e:
-        log.error(f"API Connection Error: {e}")
+        log.error(f"API Error: {e}")
         return
 
     playlist = ["#EXTM3U"]
-    success_count = 0
-
     async with async_playwright() as p:
-        # Note: Added --disable-blink-features to further hide automation
-        browser = await p.chromium.launch(headless=True, args=[
-            "--no-sandbox", 
-            "--disable-web-security",
-            "--disable-blink-features=AutomationControlled"
-        ])
-        context = await browser.new_context(
-            viewport={'width': 1280, 'height': 720},
-            user_agent=HEADERS["User-Agent"]
-        )
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
+        context = await browser.new_context(viewport={'width': 1280, 'height': 720})
 
-        # Limits to 12 most recent events to stay within the 15-minute GitHub Action timeout
-        for i, event in enumerate(events[:12], 1):
-            title = event.get("title", "Unknown Match")
+        for i, event in enumerate(events[:10], 1): # Process top 10
+            title = event.get("title", "Unknown")
             eid = event.get("id")
-            log.info(f"\n🎯 [{i}/12] Processing: {title}")
+            log.info(f"🎯 [{i}/10] {title}")
 
-            try:
-                sources = requests.get(f"{API_BASE}/source/{eid}", headers=HEADERS).json()
-            except:
-                continue
-
+            sources = requests.get(f"{API_BASE}/source/{eid}", headers=HEADERS).json()
             page = await context.new_page()
-            stream_found = None
-
+            
             for source in sources:
-                url = source.get("embedUrl")
-                if url:
-                    stream_found = await extract_m3u8(page, url)
-                    if stream_found: break
-            
-            if stream_found:
-                playlist.append(f'#EXTINF:-1, {title}\n{stream_found}')
-                success_count += 1
-                log.info(f"  ✅ SUCCESSFULLY ADDED")
-            else:
-                log.info(f"  ❌ FAILED TO EXTRACT")
-            
+                m3u8 = await extract_m3u8(page, source.get("embedUrl"))
+                if m3u8:
+                    playlist.append(f'#EXTINF:-1, {title}\n{m3u8}')
+                    break
             await page.close()
 
         await browser.close()
 
-    # Save the results to the file tracked by your YAML workflow
-    with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
+    with open("StreamedSU.m3u8", "w") as f:
         f.write("\n".join(playlist))
-    log.info(f"\n🎉 Workflow Complete. Total Streams: {success_count}")
+    log.info("✅ Playlist updated.")
 
 if __name__ == "__main__":
     asyncio.run(run())
