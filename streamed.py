@@ -48,13 +48,13 @@ async def extract_m3u8(page, embed_url):
 
         # Interaction 2: Start playback
         if not found_url:
-            await page.mouse.click(640, 360) # Some players prefer single over double
+            await page.mouse.click(640, 360) 
             await asyncio.sleep(1)
             await page.mouse.dblclick(640, 360)
             log.info("  ▶️ Interaction 2 (Retry)")
 
         # Wait loop for the m3u8 to appear in network logs
-        for _ in range(25):
+        for _ in range(15):
             if found_url: break
             await asyncio.sleep(1)
 
@@ -67,32 +67,34 @@ async def run():
     try:
         res = requests.get("https://streami.su/api/matches/live", headers=HEADERS, timeout=10)
         matches = res.json()
-    except: return
+    except Exception as e:
+        log.error(f"Failed to fetch matches: {e}")
+        return
 
     playlist = ["#EXTM3U"]
     success_count = 0
 
     async with async_playwright() as p:
-        user_data_dir = "./browser_data"
-        # Adding slow_mo: 50 makes interactions more natural
-        browser_context = await p.chromium.launch_persistent_context(
-            user_data_dir,
+        # Standard launch is more "bulletproof" for GitHub Actions than persistent_context
+        browser = await p.chromium.launch(
             headless=True,
-            slow_mo=50, 
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
-                "--disable-infobars"
-            ],
-            viewport={'width': 1280, 'height': 720}, # Standard 720p is often better for detection
+                "--disable-dev-shm-usage"
+            ]
+        )
+        
+        browser_context = await browser.new_context(
+            viewport={'width': 1280, 'height': 720},
             user_agent=HEADERS["User-Agent"]
         )
 
-        # Process first 20 matches (increase if needed)
+        # Process first 20 matches
         for i, match in enumerate(matches[:20], 1):
             title = match.get("title", "Unknown")
             sources = match.get("sources", [])
-            log.info(f"\n🎯 [{i}/{len(matches)}] {title}")
+            log.info(f"\n🎯 [{i}/{len(matches[:20])}] {title}")
 
             page = await browser_context.new_page()
             stream_found = None
@@ -100,7 +102,9 @@ async def run():
             for source in sources:
                 try:
                     s_name, s_id = source.get("source"), source.get("id")
-                    e_res = requests.get(f"https://streami.su/api/stream/{s_name}/{s_id}", headers=HEADERS).json()
+                    e_url = f"https://streami.su/api/stream/{s_name}/{s_id}"
+                    e_res = requests.get(e_url, headers=HEADERS).json()
+                    
                     for d in e_res:
                         url = d.get("embedUrl")
                         if not url: continue
@@ -116,11 +120,14 @@ async def run():
                 log.info(f"  ✅ SUCCESS")
             else:
                 log.info(f"  ❌ FAILED")
+            
             await page.close()
 
-        await browser_context.close()
+        await browser.close()
 
-    with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
+    # Final Save
+    output_file = "StreamedSU.m3u8"
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write("\n".join(playlist))
     log.info(f"\n🎉 Finished. {success_count} streams added.")
 
