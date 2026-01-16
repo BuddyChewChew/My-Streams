@@ -1,50 +1,91 @@
-name: ▶️ Update StreamedSU Playlist
+name: ▶️ Update TV Playlist
 
 on:
   schedule:
+    # Runs at the start of every hour
     - cron: '0 * * * *'
+  # Allow manual triggering
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  scrape:
+  update-playlist:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write  # Required for pushing changes
+      pull-requests: write
+      statuses: write
+    
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🐍 Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: 📦 Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install playwright requests playwright-stealth
-          python -m playwright install chromium
-          python -m playwright install-deps chromium
-
-      - name: 🎯 Run Scraper
-        run: |
-          xvfb-run --auto-servernum python streamed.py
-        env:
-          PYTHONUNBUFFERED: 1
-
-      - name: 💾 Commit & Push
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add StreamedSU.m3u8
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "✅ Update Playlist $(date -u +'%D %T')"
-            git pull origin main --rebase
-            git push origin main
-          fi
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # Fetch all history for proper commit history
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests urllib3
+    
+    - name: Run update script
+      id: update
+      env:
+        TV_M3U_SOURCE_URL: ${{ secrets.TV_M3U_SOURCE_URL }}
+      run: |
+        # Print current directory and files for debugging
+        pwd
+        ls -la
+        
+        # Run the update script
+        if ! python update_tv.py; then
+          echo "::error::Failed to update playlist"
+          exit 1
+        fi
+        
+        # Verify the file was created
+        if [ ! -f "tv.m3u" ]; then
+          echo "::error::dlive.m3u was not created"
+          exit 1
+        fi
+        
+        # Show file info
+        ls -la tv.m3u
+        head -n 5 tv.m3u || true
+        
+    - name: Check for changes
+      id: git-check
+      run: |
+        # Configure git
+        git config --global user.name 'GitHub Actions'
+        git config --global user.email 'actions@github.com'
+        
+        # Print git status for debugging
+        git status
+        
+        # Add the file and check for changes
+        git add tv.m3u
+        
+        # Force check for changes
+        if git diff --cached --quiet; then
+          echo "No changes detected in the staged file"
+          echo "changes_detected=false" >> $GITHUB_OUTPUT
+        else
+          echo "Changes detected in tv.m3u"
+          echo "changes_detected=true" >> $GITHUB_OUTPUT
+          
+          # Show the diff for debugging
+          echo "Changes to be committed:"
+          git diff --cached --stat
+        fi
+        
+    - name: Commit and push changes
+      if: steps.git-check.outputs.changes_detected == 'true'
+      run: |
+        git commit -m "✅ Updated tv.m3u"
+        git pull --rebase origin main
+        git push
