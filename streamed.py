@@ -9,13 +9,13 @@ from playwright_stealth import Stealth
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("scraper")
 
-API_BASE = "https://a.streamed.pk/api"
+# UPDATED: The .pk domain is dead. Using the new .su API.
+API_BASE = "https://api.streamed.su/api"
 
-# Headers for API and Player
 API_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
-    "Referer": "https://streamed.pk/",
-    "Origin": "https://streamed.pk",
+    "Referer": "https://streamed.su/",
+    "Origin": "https://streamed.su",
     "Accept": "application/json, text/plain, */*"
 }
 
@@ -26,6 +26,7 @@ PLAYER_HEADERS = {
 }
 
 async def extract_m3u8(page, embed_url):
+    """Intercepts the .m3u8 stream URL while bypassing ads."""
     found_url = None
     stealth = Stealth()
     
@@ -47,26 +48,30 @@ async def extract_m3u8(page, embed_url):
     try:
         await stealth.apply_stealth_async(page)
         await page.set_extra_http_headers(PLAYER_HEADERS)
-        log.info(f"   ↳ Probing Player: {embed_url}")
+        
+        log.info(f"   ↳ Probing: {embed_url}")
         await page.goto(embed_url, wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(8) 
 
-        # Interaction loop to trigger stream
         for _ in range(3):
             if found_url: break
-            await page.mouse.click(640 + random.randint(-15, 15), 360 + random.randint(-15, 15))
+            # Click to trigger player loading
+            await page.mouse.click(640 + random.randint(-10, 10), 360 + random.randint(-10, 10))
             await asyncio.sleep(3)
+            
             if len(page.context.pages) > 1:
                 for p in page.context.pages:
                     if p != page: await p.close()
+
         return found_url
     except Exception:
         return None
 
 async def run():
-    log.info("📡 Fetching Live Matches...")
+    log.info("📡 Fetching Matches from New API...")
     try:
-        response = requests.get(f"{API_BASE}/matches/live", headers=API_HEADERS, timeout=20)
+        # Changed endpoint to /matches/all for the new API
+        response = requests.get(f"{API_BASE}/matches/all", headers=API_HEADERS, timeout=20)
         response.raise_for_status()
         matches = response.json()
     except Exception as e:
@@ -77,25 +82,26 @@ async def run():
     success = 0
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
         context = await browser.new_context(viewport={'width': 1280, 'height': 720})
 
+        # Process first 15 matches
         for i, match in enumerate(matches[:15], 1):
             title = match.get("title", "Match")
             match_id = match.get("id")
-            api_sources = match.get("sources", [])
+            sources = match.get("sources", [])
             log.info(f"\n🎯 [{i}] {title}")
 
             page = await context.new_page()
-            target_urls = []
-            if api_sources:
-                for src in api_sources:
-                    s_provider = src.get("source")
-                    s_id = src.get("id")
-                    if s_provider and s_id:
-                        target_urls.append(f"https://streamed.su/watch/{s_provider}/{s_id}")
             
-            # Fallback
+            # Logic from the diff: Use source list, fallback to match ID
+            target_urls = []
+            if sources:
+                for src in sources:
+                    if src.get("source") and src.get("id"):
+                        target_urls.append(f"https://streamed.su/watch/{src['source']}/{src['id']}")
+            
+            # Add fallback using match ID (main source)
             target_urls.append(f"https://streamed.su/watch/main/{match_id}")
 
             found_stream = None
@@ -109,7 +115,9 @@ async def run():
                 log.info(f"   ✅ SUCCESS")
             else:
                 log.info(f"   ❌ FAILED")
+            
             await page.close()
+
         await browser.close()
 
     with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
