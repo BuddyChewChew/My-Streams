@@ -9,8 +9,8 @@ from playwright_stealth import Stealth
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("scraper")
 
-# UPDATED: 'api.streamed.su' failed to resolve. Using the verified 'v3' endpoint.
-API_BASE = "https://v3.streamed.su/api"
+# UPDATED: Using the active API domain you provided
+API_BASE = "https://streami.su/api"
 
 API_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
@@ -50,13 +50,13 @@ async def extract_m3u8(page, embed_url):
         await page.set_extra_http_headers(PLAYER_HEADERS)
         
         log.info(f"   ↳ Probing: {embed_url}")
-        await page.goto(embed_url, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(8) 
+        await page.goto(embed_url, wait_until="domcontentloaded", timeout=25000)
+        await asyncio.sleep(7) 
 
-        for _ in range(3):
+        for _ in range(2): # Quick interaction to trigger player
             if found_url: break
-            await page.mouse.click(640 + random.randint(-10, 10), 360 + random.randint(-10, 10))
-            await asyncio.sleep(3)
+            await page.mouse.click(640 + random.randint(-5, 5), 360 + random.randint(-5, 5))
+            await asyncio.sleep(4)
             
             if len(page.context.pages) > 1:
                 for p in page.context.pages:
@@ -67,21 +67,15 @@ async def extract_m3u8(page, embed_url):
         return None
 
 async def run():
-    log.info(f"📡 Connecting to API: {API_BASE}...")
+    log.info(f"📡 Using API: {API_BASE}")
     try:
-        # Fetching from the verified v3 matches endpoint
-        response = requests.get(f"{API_BASE}/matches/all", headers=API_HEADERS, timeout=20)
+        # Fetching from the new streami.su endpoint
+        response = requests.get(f"{API_BASE}/matches/all", headers=API_HEADERS, timeout=15)
         response.raise_for_status()
         matches = response.json()
     except Exception as e:
-        log.error(f"❌ Connection Failed: {e}")
-        log.info("💡 Trying fallback domain: https://streamed.su/api/matches/all")
-        try:
-            response = requests.get("https://streamed.su/api/matches/all", headers=API_HEADERS, timeout=20)
-            matches = response.json()
-        except:
-            log.error("❌ All API domains failed to resolve.")
-            return
+        log.error(f"❌ API Access Failed: {e}")
+        return
 
     playlist = ["#EXTM3U"]
     success = 0
@@ -90,7 +84,8 @@ async def run():
         browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
         context = await browser.new_context(viewport={'width': 1280, 'height': 720})
 
-        for i, match in enumerate(matches[:15], 1):
+        # Process top 12 matches to stay within GitHub Action time limits
+        for i, match in enumerate(matches[:12], 1):
             title = match.get("title", "Match")
             match_id = match.get("id")
             sources = match.get("sources", [])
@@ -99,13 +94,15 @@ async def run():
             page = await context.new_page()
             
             target_urls = []
+            # 1. Try API-provided sources
             if sources:
                 for src in sources:
                     if src.get("source") and src.get("id"):
-                        # Use the watch format from the commit diff
                         target_urls.append(f"https://streamed.su/watch/{src['source']}/{src['id']}")
             
-            target_urls.append(f"https://streamed.su/watch/main/{match_id}")
+            # 2. Try the 'main' fallback with the provided match ID
+            if match_id:
+                target_urls.append(f"https://streamed.su/watch/main/{match_id}")
 
             found_stream = None
             for embed_url in target_urls:
