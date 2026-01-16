@@ -32,6 +32,43 @@ jobs:
 
       - name: 🎯 Run scraping script
         run: |
+          # xvfb-run provides a virtual monitor required for some stream players
+          xvfb-run python streamed.py
+        env:
+          PYTHONUNBUFFERED: 1
+
+      - name: 💾 Commit & Safely Push if Playlist Changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if [ -f StreamedSU.m3u8 ]; then
+            git add StreamedSU.m3u8
+            if git diff --cached --quiet; then
+              echo "✅ No changes to commit"
+              exit 0
+            fi
+            git commit -m "✅ Updated StreamedSU.m3u8 $(date -u +'%a %b %d %T UTC %Y')"
+            git push origin main || (git pull origin main --rebase && git push origin main)
+          else
+            echo "❌ StreamedSU.m3u8 not found!"
+            exit 1
+          fi
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install Python dependencies & Playwright
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright requests
+          python -m playwright install chromium
+          python -m playwright install-deps chromium
+
+      - name: 🎯 Run scraping script
+        run: |
           # xvfb-run creates a virtual screen so the player thinks it's on a real PC
           xvfb-run python streamed.py
         env:
