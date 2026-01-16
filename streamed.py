@@ -7,35 +7,44 @@ from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 
-# Set up logging to match the format in your GitHub Action logs
+# Configure logging for GitHub Actions visibility
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("scraper")
 
+# The API endpoint is correct, but it requires specific headers to not redirect
 API_BASE = "https://a.streamed.pk/api"
-# Enhanced headers to bypass blocks that cause "Expecting value: line 1 column 1" errors
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
+
+# These headers are essential to avoid the "Expecting value: line 1 column 1" error
+API_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
     "Referer": "https://streamed.pk/",
     "Origin": "https://streamed.pk",
+    "Accept": "application/json, text/plain, */*"
+}
+
+# Your custom headers for the actual video player authorization
+PLAYER_HEADERS = {
+    "Origin": "https://embedsports.top",
+    "Referer": "https://embedsports.top/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 }
 
 async def extract_m3u8(page, embed_url):
-    """Uses Playwright to capture the .m3u8 stream from a specific embed URL."""
+    """Uses Playwright to intercept the M3U8 stream URL from the player."""
     found_url = None
     stealth = Stealth()
     
     async def handle_route(route):
         nonlocal found_url
         url = route.request.url
-        # Block heavy tracking to speed up the GitHub runner
-        if any(x in url for x in ["doubleclick", "analytics", "telemetry", "usrpubtrk"]):
+        # Block tracking scripts identified in your job-logs.txt
+        if any(x in url for x in ["usrpubtrk.com", "doubleclick", "analytics", "telemetry"]):
             await route.abort()
         elif ".m3u8" in url and not found_url:
-            # Avoid telemetry streams; grab the actual match stream
-            if "telemetry" not in url.lower() and "jwpltx" not in url.lower():
+            # Filter out internal telemetry streams
+            if all(x not in url.lower() for x in ["telemetry", "prd.jwpltx"]):
                 found_url = url
-                log.info(f"  ⚡ Captured: {url[:65]}...")
+                log.info(f"  ⚡ Captured: {url[:60]}...")
             await route.continue_()
         else:
             await route.continue_()
@@ -44,79 +53,70 @@ async def extract_m3u8(page, embed_url):
 
     try:
         await stealth.apply_stealth_async(page)
-        # Set the referer to the provider's domain for access
-        parsed = urlparse(embed_url)
-        await page.set_extra_http_headers({"Referer": f"{parsed.scheme}://{parsed.netloc}/"})
+        # Apply your authorization headers for the player
+        await page.set_extra_http_headers(PLAYER_HEADERS)
         
-        await page.goto(embed_url, wait_until="domcontentloaded", timeout=45000)
-        await asyncio.sleep(6)
+        await page.goto(embed_url, wait_until="domcontentloaded", timeout=30000)
+        await asyncio.sleep(7)
 
-        # Trigger the player via simulated mouse clicks
+        # Simulate clicks to trigger the video stream and bypass ad-overlays
         for _ in range(3):
             if found_url: break
-            await page.mouse.click(640 + random.randint(-20, 20), 360 + random.randint(-20, 20))
+            await page.mouse.click(640 + random.randint(-15, 15), 360 + random.randint(-15, 15))
             await asyncio.sleep(4)
-            # Close popup ad tabs immediately
+            # Close popup ads that trigger on click
             if len(page.context.pages) > 1:
-                log.info("  🚫 Closing ad-tab...")
                 for p in page.context.pages:
                     if p != page: await p.close()
 
         return found_url
-    except Exception as e:
-        log.warning(f"  ⚠️ Playwright Error: {str(e)[:50]}")
+    except Exception:
         return None
 
 async def run():
-    log.info("📡 Fetching Live Matches...")
+    log.info("📡 Fetching Live Match List...")
     try:
-        # Step 1: Use the Live Matches endpoint you found
-        response = requests.get(f"{API_BASE}/matches/live", headers=HEADERS, timeout=20)
+        # Step 1: Request live matches using API_HEADERS to prevent blocks
+        response = requests.get(f"{API_BASE}/matches/live", headers=API_HEADERS, timeout=20)
         if response.status_code != 200:
-            log.error(f"❌ API Error: Received status {response.status_code}")
+            log.error(f"❌ API Access Denied: Status {response.status_code}")
             return
         matches = response.json()
     except Exception as e:
-        log.error(f"❌ API Error: {e}. The site may be blocking the Action runner IP.")
+        log.error(f"❌ Request Error: {e}")
         return
 
     playlist = ["#EXTM3U"]
-    success = 0
+    success_count = 0
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=[
-            "--no-sandbox", 
-            "--disable-setuid-sandbox",
-            "--disable-blink-features=AutomationControlled"
-        ])
+        # Launch browser with settings to avoid detection 
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
         context = await browser.new_context(viewport={'width': 1280, 'height': 720})
 
-        # Process the first 10 live matches
+        # Process the top 10 currently live matches
         for i, match in enumerate(matches[:10], 1):
             title = match.get("title", "Match")
             match_id = match.get("id")
             log.info(f"\n🎯 [{i}/10] {title}")
 
-            # Step 2: Get sources for the specific match
+            # Step 2: Get available sources for the match
             try:
-                src_resp = requests.get(f"{API_BASE}/source/{match_id}", headers=HEADERS, timeout=10)
-                sources_list = src_resp.json()
+                src_resp = requests.get(f"{API_BASE}/source/{match_id}", headers=API_HEADERS, timeout=10)
+                sources = src_resp.json()
             except: continue
 
             page = await context.new_page()
             found_stream = None
 
-            # Step 3: Iterate through provider-specific endpoints (Alpha, Bravo, etc.)
-            for source_obj in sources_list:
-                provider = source_obj.get("source", "").lower() # e.g., 'delta'
-                sid = source_obj.get("id")
-                
-                if not provider or not sid: continue
-                
+            # Step 3: Iterate through provider endpoints (alpha, delta, etc.)
+            for s in sources:
+                provider = s.get("source").lower()
+                sid = s.get("id")
                 try:
-                    # Construct provider URL: /api/stream/[provider]/[id]
-                    stream_api_url = f"{API_BASE}/stream/{provider}/{sid}"
-                    res = requests.get(stream_api_url, headers=HEADERS, timeout=10).json()
+                    # Construct the dynamic provider URL
+                    stream_api = f"{API_BASE}/stream/{provider}/{sid}"
+                    res = requests.get(stream_api, headers=API_HEADERS, timeout=10).json()
                     
                     for item in res:
                         embed_url = item.get("embedUrl")
@@ -125,18 +125,19 @@ async def run():
                             if found_stream: break
                 except: continue
                 if found_stream: break
-
+            
             if found_stream:
                 playlist.append(f'#EXTINF:-1, {title}\n{found_stream}')
-                success += 1
+                success_count += 1
             
             await page.close()
 
         await browser.close()
 
+    # Save the final playlist for your GitHub Action to commit 
     with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
         f.write("\n".join(playlist))
-    log.info(f"\n🎉 Done. Saved {success} streams to StreamedSU.m3u8")
+    log.info(f"\n🎉 Process Complete. Total Streams: {success_count}")
 
 if __name__ == "__main__":
     asyncio.run(run())
