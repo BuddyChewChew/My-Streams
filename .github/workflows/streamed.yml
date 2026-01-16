@@ -26,7 +26,8 @@ jobs:
       - name: 📦 Install Python dependencies & Playwright
         run: |
           python -m pip install --upgrade pip
-          pip install playwright requests
+          # Added playwright-stealth here
+          pip install playwright requests playwright-stealth
           python -m playwright install chromium
           python -m playwright install-deps chromium
 
@@ -46,12 +47,18 @@ jobs:
           
           if [ -f StreamedSU.m3u8 ]; then
             git add StreamedSU.m3u8
+            
+            # Check if there are changes before committing
             if git diff --cached --quiet; then
               echo "✅ No changes to commit"
               exit 0
             fi
+            
             git commit -m "✅ Updated StreamedSU.m3u8 $(date -u +'%a %b %d %T UTC %Y')"
-            git push origin main || (git pull origin main --rebase && git push origin main)
+            
+            # Use rebase to handle concurrent updates
+            git pull origin main --rebase
+            git push origin main
           else
             echo "❌ StreamedSU.m3u8 not found!"
             exit 1
