@@ -56,41 +56,4 @@ jobs:
           else
             echo "Error: StreamedSU.m3u8 was not generated."
             exit 1
-          fion@v5
-        with:
-          python-version: '3.11'
-
-      - name: 📦 Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install playwright requests playwright-stealth
-          python -m playwright install chromium
-          python -m playwright install-deps chromium
-
-      - name: 🎯 Run Scraper
-        run: |
-          # Added --server-args to ensure the virtual display matches our script's viewport
-          xvfb-run --server-args="-screen 0 1280x720x24" --auto-servernum python streamed.py
-        env:
-          PYTHONUNBUFFERED: 1
-
-      - name: 💾 Commit & Push
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Ensure file exists before adding
-          if [ -f StreamedSU.m3u8 ]; then
-            git add StreamedSU.m3u8
-            if git diff --cached --quiet; then
-              echo "No changes to commit"
-            else
-              git commit -m "✅ Update Playlist $(date -u +'%D %T')"
-              git pull origin main --rebase
-              git push origin main
-            fi
-          else
-            echo "File StreamedSU.m3u8 not found. Skipping commit."
           fi
