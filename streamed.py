@@ -1,109 +1,66 @@
 import asyncio
-import requests
 import logging
 from playwright.async_api import async_playwright
-from playwright_stealth import Stealth
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("scraper")
 
-API_URL = "https://streami.su/api/matches/all"
-
-async def get_stream_link(context, embed_url):
+async def capture_stream(context, url):
     page = await context.new_page()
-    captured_url = None
+    captured_m3u8 = None
 
-    # Listen for background requests
-    async def handle_request(request):
-        nonlocal captured_url
-        url = request.url
-        if ".m3u8" in url and not captured_url:
-            if all(x not in url.lower() for x in ["telemetry", "analytics", "prd.jwpltx"]):
-                captured_url = url
-                log.info(f"      ⚡ Captured: {url[:50]}...")
+    # This is the "Network Sniffer" - it watches every request the browser makes
+    async def on_request(request):
+        nonlocal captured_m3u8
+        # We look for .m3u8, but ignore the common 'jwpltx' (player telemetry)
+        if ".m3u8" in request.url and "jwpltx" not in request.url:
+            if not captured_m3u8:
+                captured_m3u8 = request.url
+                log.info(f"      ✨ SUCCESS: {captured_m3u8[:70]}...")
 
-    page.on("request", handle_request)
+    page.on("request", on_request)
 
     try:
-        log.info(f"   ↳ Loading: {embed_url}")
-        # Realistic User-Agent is mandatory for embedsports.top
-        await page.goto(embed_url, wait_until="load", timeout=45000)
+        log.info(f"   ↳ Probing: {url}")
+        # We use 'domcontentloaded' to start sniffing as early as possible
+        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
         
-        # --- Case 1: Wait for Autoplay ---
-        await asyncio.sleep(7) 
-        if captured_url:
-            log.info("      ✨ Autoplay detected.")
-            return captured_url
-
-        # --- Case 2: Click to Play ---
-        log.info("      🖱️ No autoplay. Attempting manual click...")
-        # Common selectors for the play button
-        selectors = ["button.vjs-big-play-button", ".play-button", "video", "canvas"]
-        for selector in selectors:
-            try:
-                if await page.is_visible(selector):
-                    await page.click(selector, force=True)
-                    break
-            except: continue
-        
-        # Final fallback: Click exactly in the middle of the player
+        # Give it 15 seconds to autoplay and fire the network request
+        for i in range(15):
+            if captured_m3u8:
+                return captured_m3u8
+            await asyncio.sleep(1)
+            
+        # If no autoplay after 15s, try one "Emergency Click"
+        log.info("      🖱️ No autoplay detected, trying emergency click...")
         await page.mouse.click(640, 360)
+        await asyncio.sleep(10)
         
-        await asyncio.sleep(10) # Wait for stream to start after click
-        return captured_url
-
+        return captured_m3u8
     except Exception as e:
-        log.error(f"      ⚠️ Error: {str(e)[:40]}")
+        log.error(f"      ⚠️ Error: {e}")
         return None
     finally:
         await page.close()
 
-async def main():
-    log.info("📡 Fetching Matches...")
-    try:
-        r = requests.get(API_URL, timeout=10)
-        matches = r.json()
-    except:
-        log.error("❌ API Failed.")
-        return
-
-    playlist = ["#EXTM3U"]
-    success = 0
-
+async def run():
     async with async_playwright() as p:
-        # Use Chromium with Stealth
-        browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
-            viewport={'width': 1280, 'height': 720},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         
-        # Process first 10 live matches
-        for i, match in enumerate(matches[:10], 1):
-            title = match.get("title", "Unknown Event")
-            sources = match.get("sources", [])
-            log.info(f"\n🎯 [{i}] {title}")
-
-            found_m3u8 = None
-            for src in sources:
-                s_id = src.get("id")
-                if s_id:
-                    # Target the embed URL directly
-                    target = f"https://embedsports.top/embed/admin/{s_id}/1"
-                    found_m3u8 = await get_stream_link(context, target)
-                    if found_m3u8: break
-            
-            if found_m3u8:
-                playlist.append(f'#EXTINF:-1, {title}\n{found_m3u8}')
-                success += 1
-            else:
-                log.info("   ❌ FAILED")
+        # Test with the autoplay URL you provided
+        url = "https://embedsports.top/embed/admin/19232/1"
+        stream = await capture_stream(context, url)
+        
+        if stream:
+            print(f"\nFINAL M3U8: {stream}")
+            # Here you would save it to your .m3u8 file
+        else:
+            print("\n❌ Failed to capture.")
 
         await browser.close()
 
-    with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
-        f.write("\n".join(playlist))
-    log.info(f"\n🎉 Finished! Streams Captured: {success}")
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run())
