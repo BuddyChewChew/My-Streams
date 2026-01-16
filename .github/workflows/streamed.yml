@@ -30,7 +30,8 @@ jobs:
 
       - name: 🎯 Run Scraper
         run: |
-          xvfb-run --auto-servernum python streamed.py
+          # Added --server-args to ensure the virtual display matches our script's viewport
+          xvfb-run --server-args="-screen 0 1280x720x24" --auto-servernum python streamed.py
         env:
           PYTHONUNBUFFERED: 1
 
@@ -40,11 +41,17 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add StreamedSU.m3u8
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
+          
+          # Ensure file exists before adding
+          if [ -f StreamedSU.m3u8 ]; then
+            git add StreamedSU.m3u8
+            if git diff --cached --quiet; then
+              echo "No changes to commit"
+            else
+              git commit -m "✅ Update Playlist $(date -u +'%D %T')"
+              git pull origin main --rebase
+              git push origin main
+            fi
           else
-            git commit -m "✅ Update Playlist $(date -u +'%D %T')"
-            git pull origin main --rebase
-            git push origin main
+            echo "File StreamedSU.m3u8 not found. Skipping commit."
           fi
