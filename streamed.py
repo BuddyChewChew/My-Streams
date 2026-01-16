@@ -5,40 +5,33 @@ import random
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("scraper")
 
-# API endpoint from your recommendation
+# Using the API domain you confirmed is working
 API_BASE = "https://streami.su/api"
 
-API_HEADERS = {
+# These must match the domain we are probing to pass security checks
+COMMON_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
     "Referer": "https://streamed.su/",
     "Origin": "https://streamed.su",
-    "Accept": "application/json, text/plain, */*"
-}
-
-PLAYER_HEADERS = {
-    "Origin": "https://streamed.su",
-    "Referer": "https://streamed.su/",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 }
 
 async def extract_m3u8(page, embed_url):
-    """Intercepts the .m3u8 stream URL while bypassing ads."""
     found_url = None
     stealth = Stealth()
     
     async def handle_route(route):
         nonlocal found_url
         url = route.request.url
-        if any(x in url for x in ["usrpubtrk.com", "doubleclick", "analytics", "telemetry"]):
+        if any(x in url for x in ["analytics", "doubleclick", "usrpubtrk"]):
             await route.abort()
         elif ".m3u8" in url and not found_url:
-            if all(x not in url.lower() for x in ["telemetry", "prd.jwpltx"]):
+            # Filter for actual video fragments, not telemetry
+            if "jwpltx" not in url.lower():
                 found_url = url
-                log.info(f"   ⚡ Captured: {url[:60]}...")
+                log.info(f"   ⚡ Captured: {url[:50]}...")
             await route.continue_()
         else:
             await route.continue_()
@@ -47,45 +40,49 @@ async def extract_m3u8(page, embed_url):
 
     try:
         await stealth.apply_stealth_async(page)
-        await page.set_extra_http_headers(PLAYER_HEADERS)
+        await page.set_extra_http_headers(COMMON_HEADERS)
         
         log.info(f"   ↳ Probing: {embed_url}")
-        await page.goto(embed_url, wait_until="domcontentloaded", timeout=25000)
-        await asyncio.sleep(8) 
+        # Use a longer timeout and wait for network idle to ensure the player initializes
+        await page.goto(embed_url, wait_until="networkidle", timeout=45000)
+        await asyncio.sleep(10) 
 
-        for _ in range(2): 
+        # Interaction to bypass the "Click to Play" overlay
+        for _ in range(3):
             if found_url: break
-            # Targeted click to bypass overlays
-            await page.mouse.click(640 + random.randint(-10, 10), 360 + random.randint(-10, 10))
-            await asyncio.sleep(4)
+            # Click exactly in the center where the Play button usually sits
+            await page.mouse.click(640, 360)
+            await asyncio.sleep(5)
             
+            # Close ad-popups
             if len(page.context.pages) > 1:
                 for p in page.context.pages:
                     if p != page: await p.close()
 
         return found_url
-    except Exception:
+    except Exception as e:
+        log.debug(f"Error: {e}")
         return None
 
 async def run():
-    log.info(f"📡 Using API: {API_BASE}")
+    log.info(f"📡 API Fetch: {API_BASE}/matches/all")
     try:
-        response = requests.get(f"{API_BASE}/matches/all", headers=API_HEADERS, timeout=15)
-        response.raise_for_status()
-        matches = response.json()
+        # We use streami.su for data, but streamed.su for the browser
+        resp = requests.get(f"{API_BASE}/matches/all", headers=COMMON_HEADERS, timeout=15)
+        matches = resp.json()
     except Exception as e:
-        log.error(f"❌ API Access Failed: {e}")
+        log.error(f"❌ API Error: {e}")
         return
 
     playlist = ["#EXTM3U"]
     success = 0
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-web-security"])
         context = await browser.new_context(viewport={'width': 1280, 'height': 720})
 
-        # Process first 12 matches to stay within action limits
-        for i, match in enumerate(matches[:12], 1):
+        # Process top 10 matches
+        for i, match in enumerate(matches[:10], 1):
             title = match.get("title", "Match")
             match_id = match.get("id")
             sources = match.get("sources", [])
@@ -93,22 +90,18 @@ async def run():
 
             page = await context.new_page()
             
+            # Build URL list based on your live.json structure
             target_urls = []
-            # Priority 1: Use specific IDs from sources array
-            if sources:
-                for src in sources:
-                    s_provider = src.get("source")
-                    s_id = src.get("id")
-                    if s_provider and s_id:
-                        target_urls.append(f"https://streamed.su/watch/{s_provider}/{s_id}")
+            for src in sources:
+                if src.get("source") and src.get("id"):
+                    target_urls.append(f"https://streamed.su/watch/{src['source']}/{src['id']}")
             
-            # Priority 2: Use top-level match ID as fallback
-            if match_id:
-                target_urls.append(f"https://streamed.su/watch/main/{match_id}")
+            # Always fallback to the main match ID
+            target_urls.append(f"https://streamed.su/watch/main/{match_id}")
 
             found_stream = None
-            for embed_url in target_urls:
-                found_stream = await extract_m3u8(page, embed_url)
+            for url in target_urls:
+                found_stream = await extract_m3u8(page, url)
                 if found_stream: break
             
             if found_stream:
@@ -124,7 +117,7 @@ async def run():
 
     with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
         f.write("\n".join(playlist))
-    log.info(f"\n🎉 Finished. Total Streams: {success}")
+    log.info(f"\n🎉 Finished. Total: {success}")
 
 if __name__ == "__main__":
     asyncio.run(run())
