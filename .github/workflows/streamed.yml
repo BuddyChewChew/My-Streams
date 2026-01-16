@@ -9,9 +9,9 @@ permissions:
   contents: write
 
 jobs:
-  scrape:
+  run-scraper:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
       - name: 📥 Checkout
@@ -22,25 +22,25 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 📦 Install
+      - name: 📦 Install Requirements
         run: |
-          pip install playwright requests playwright-stealth
+          pip install playwright requests
           python -m playwright install chromium
           python -m playwright install-deps chromium
 
-      - name: 🎯 Run
+      - name: 🎯 Run Scraper
         run: |
           xvfb-run --server-args="-screen 0 1280x720x24" --auto-servernum python streamed.py
         env:
           PYTHONUNBUFFERED: 1
 
-      - name: 💾 Push
+      - name: 💾 Save & Commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add StreamedSU.m3u8
-          git commit -m "✅ Update: $(date -u +'%D %T UTC')" || exit 0
+          git commit -m "✅ Update Playlist: $(date -u +'%D %T UTC')" || exit 0
           git pull origin main --rebase
           git push origin main
