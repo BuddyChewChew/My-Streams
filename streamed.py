@@ -10,7 +10,6 @@ log = logging.getLogger("scraper")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Referer": "https://streami.su/"
 }
 
 async def extract_m3u8(page, embed_url):
@@ -20,31 +19,42 @@ async def extract_m3u8(page, embed_url):
         nonlocal found_url
         url = request.url
         if ".m3u8" in url and not found_url:
-            if all(x not in url for x in ["telemetry", "prd.jwpltx", "omtrdc"]):
+            # Ignore telemetry and ads
+            if all(x not in url for x in ["telemetry", "prd.jwpltx", "omtrdc", "logs"]):
                 found_url = url
                 log.info(f"  ⚡ Captured: {url[:60]}...")
 
     page.on("request", intercept_request)
 
     try:
-        # Apply Stealth to this specific page
         await stealth_async(page)
         
-        await page.goto(embed_url, wait_until="networkidle", timeout=30000)
-        await asyncio.sleep(4)
+        # Set referer specifically for the embed provider
+        await page.set_extra_http_headers({"Referer": "https://streami.su/"})
+        
+        # 'load' is safer than 'networkidle' for streaming pages
+        await page.goto(embed_url, wait_until="load", timeout=30000)
+        await asyncio.sleep(5)
 
-        # Human-like interaction: random delay + click
-        await page.mouse.move(640, 360)
+        # Interaction 1: Clear overlay
         await page.mouse.click(640, 360)
         log.info("  👆 Interaction 1 (Bypass)")
         await asyncio.sleep(2)
 
-        # Force a second interaction if no stream yet
+        # Close any popups that opened
+        pages = page.context.pages
+        for p in pages:
+            if p != page: await p.close()
+
+        # Interaction 2: Start playback
         if not found_url:
+            await page.mouse.click(640, 360) # Some players prefer single over double
+            await asyncio.sleep(1)
             await page.mouse.dblclick(640, 360)
             log.info("  ▶️ Interaction 2 (Retry)")
 
-        for _ in range(20):
+        # Wait loop for the m3u8 to appear in network logs
+        for _ in range(25):
             if found_url: break
             await asyncio.sleep(1)
 
@@ -63,21 +73,23 @@ async def run():
     success_count = 0
 
     async with async_playwright() as p:
-        # Use a persistent context to store "cookies" and look like a real browser
         user_data_dir = "./browser_data"
+        # Adding slow_mo: 50 makes interactions more natural
         browser_context = await p.chromium.launch_persistent_context(
             user_data_dir,
             headless=True,
+            slow_mo=50, 
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-infobars"
             ],
-            viewport={'width': 1920, 'height': 1080},
+            viewport={'width': 1280, 'height': 720}, # Standard 720p is often better for detection
             user_agent=HEADERS["User-Agent"]
         )
 
-        for i, match in enumerate(matches[:15], 1):
+        # Process first 20 matches (increase if needed)
+        for i, match in enumerate(matches[:20], 1):
             title = match.get("title", "Unknown")
             sources = match.get("sources", [])
             log.info(f"\n🎯 [{i}/{len(matches)}] {title}")
