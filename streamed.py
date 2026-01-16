@@ -9,7 +9,7 @@ from playwright_stealth import Stealth
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("scraper")
 
-# UPDATED: Using the active API domain you provided
+# API endpoint from your recommendation
 API_BASE = "https://streami.su/api"
 
 API_HEADERS = {
@@ -51,11 +51,12 @@ async def extract_m3u8(page, embed_url):
         
         log.info(f"   ↳ Probing: {embed_url}")
         await page.goto(embed_url, wait_until="domcontentloaded", timeout=25000)
-        await asyncio.sleep(7) 
+        await asyncio.sleep(8) 
 
-        for _ in range(2): # Quick interaction to trigger player
+        for _ in range(2): 
             if found_url: break
-            await page.mouse.click(640 + random.randint(-5, 5), 360 + random.randint(-5, 5))
+            # Targeted click to bypass overlays
+            await page.mouse.click(640 + random.randint(-10, 10), 360 + random.randint(-10, 10))
             await asyncio.sleep(4)
             
             if len(page.context.pages) > 1:
@@ -69,7 +70,6 @@ async def extract_m3u8(page, embed_url):
 async def run():
     log.info(f"📡 Using API: {API_BASE}")
     try:
-        # Fetching from the new streami.su endpoint
         response = requests.get(f"{API_BASE}/matches/all", headers=API_HEADERS, timeout=15)
         response.raise_for_status()
         matches = response.json()
@@ -84,7 +84,7 @@ async def run():
         browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
         context = await browser.new_context(viewport={'width': 1280, 'height': 720})
 
-        # Process top 12 matches to stay within GitHub Action time limits
+        # Process first 12 matches to stay within action limits
         for i, match in enumerate(matches[:12], 1):
             title = match.get("title", "Match")
             match_id = match.get("id")
@@ -94,13 +94,15 @@ async def run():
             page = await context.new_page()
             
             target_urls = []
-            # 1. Try API-provided sources
+            # Priority 1: Use specific IDs from sources array
             if sources:
                 for src in sources:
-                    if src.get("source") and src.get("id"):
-                        target_urls.append(f"https://streamed.su/watch/{src['source']}/{src['id']}")
+                    s_provider = src.get("source")
+                    s_id = src.get("id")
+                    if s_provider and s_id:
+                        target_urls.append(f"https://streamed.su/watch/{s_provider}/{s_id}")
             
-            # 2. Try the 'main' fallback with the provided match ID
+            # Priority 2: Use top-level match ID as fallback
             if match_id:
                 target_urls.append(f"https://streamed.su/watch/main/{match_id}")
 
