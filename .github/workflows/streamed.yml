@@ -2,49 +2,63 @@ name: ▶️ Update StreamedSU Playlist
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 * * * *'  # Runs automatically every hour
+  workflow_dispatch:      # Allows you to run it manually from the 'Actions' tab
 
 permissions:
   contents: write
 
 jobs:
-  scrape:
+  scrape-and-update:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
-      - name: 📥 Checkout
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Python Setup
+      - name: 🐍 Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: 📦 Install Deps
+      - name: 📦 Install Python Dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install playwright requests playwright-stealth
+
+      - name: 🌐 Install Playwright Chromium & Deps
+        run: |
           python -m playwright install chromium
           python -m playwright install-deps chromium
 
-      - name: 🎯 Run Scraper
+      - name: 🎯 Run Scraper (via XVFB)
         run: |
+          # xvfb-run provides the virtual monitor needed for mouse clicks
           xvfb-run --server-args="-screen 0 1280x720x24" --auto-servernum python streamed.py
         env:
           PYTHONUNBUFFERED: 1
 
-      - name: 💾 Commit & Push
+      - name: 💾 Commit and Push Changes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Fix for "safe directory" issues in GitHub Actions
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Only commit if the file was actually changed
           if [ -f StreamedSU.m3u8 ]; then
             git add StreamedSU.m3u8
-            git commit -m "✅ Update $(date -u +'%D %T UTC')" || exit 0
-            git pull origin main --rebase
-            git push origin main
+            if git diff --cached --quiet; then
+              echo "No changes detected in playlist."
+            else
+              git commit -m "✅ Auto-update Playlist: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+              git pull origin main --rebase
+              git push origin main
+            fi
+          else
+            echo "Error: StreamedSU.m3u8 was not generated."
+            exit 1
           fi
