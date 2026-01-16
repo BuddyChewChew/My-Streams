@@ -2,6 +2,8 @@ import asyncio
 import requests
 import logging
 import os
+import random
+from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 
 # Robust stealth import handling
@@ -26,36 +28,52 @@ async def extract_m3u8(page, embed_url):
     async def intercept_request(request):
         nonlocal found_url
         url = request.url
+        # Capture the actual stream link
         if ".m3u8" in url and not found_url:
-            if all(x not in url.lower() for x in ["telemetry", "prd.jwpltx", "omtrdc", "logs", "analytics"]):
+            if all(x not in url.lower() for x in ["telemetry", "prd.jwpltx", "omtrdc", "logs", "analytics", "doubleclick"]):
                 found_url = url
                 log.info(f"  ⚡ Captured: {url[:70]}...")
 
     page.on("request", intercept_request)
 
     try:
-        # Apply stealth if available
         if stealth:
             try:
                 await stealth(page)
             except:
                 pass
         
-        await page.set_extra_http_headers({"Referer": "https://streami.su/"})
+        # FIX: Dynamically set Referer based on the embed provider URL
+        parsed_uri = urlparse(embed_url)
+        base_domain = f"{parsed_uri.scheme}://{parsed_uri.netloc}/"
         
-        # Use a slightly more aggressive wait for network calls
-        await page.goto(embed_url, wait_until="load", timeout=30000)
-        await asyncio.sleep(4)
+        await page.set_extra_http_headers({
+            "Referer": base_domain,
+            "Origin": base_domain
+        })
+        
+        log.info(f"  ↳ Probing: {embed_url[:50]}...")
+        # Wait for domcontentloaded to be faster than full 'load'
+        await page.goto(embed_url, wait_until="domcontentloaded", timeout=45000)
+        
+        # Give the player time to initialize
+        await asyncio.sleep(6)
 
-        # Interaction: Click to bypass overlays
-        await page.mouse.click(640, 360)
-        log.info("  👆 Interaction (Bypass)")
+        # Interaction: Click three points in the center area to bypass overlays
+        # This handles players where the play button might be slightly offset
+        points = [(640, 360), (600, 360), (680, 360)]
+        for x, y in points:
+            if found_url: break
+            await page.mouse.click(x, y)
+            await asyncio.sleep(1)
 
-        # Close popups
+        log.info("  👆 Interaction Sequence (Bypass)")
+
+        # Close any popups that opened from the clicks
         for p in page.context.pages:
             if p != page: await p.close()
 
-        # Final trigger loop
+        # Final wait loop for the link to appear in traffic
         for _ in range(15):
             if found_url: break
             await asyncio.sleep(1)
@@ -80,7 +98,12 @@ async def run():
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
-            args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"]
+            args=[
+                "--disable-blink-features=AutomationControlled", 
+                "--no-sandbox", 
+                "--disable-dev-shm-usage",
+                "--disable-web-security"
+            ]
         )
         
         browser_context = await browser.new_context(
@@ -88,8 +111,8 @@ async def run():
             user_agent=HEADERS["User-Agent"]
         )
 
-        # Process top matches
-        active_matches = matches[:15]
+        # Process top 12 matches for stability
+        active_matches = matches[:12]
         for i, match in enumerate(active_matches, 1):
             title = match.get("title", "Unknown")
             sources = match.get("sources", [])
@@ -107,7 +130,6 @@ async def run():
                     for d in e_res:
                         url = d.get("embedUrl")
                         if not url: continue
-                        log.info(f"  ↳ Probing: {url[:50]}...")
                         stream_found = await extract_m3u8(page, url)
                         if stream_found: break
                 except: continue
