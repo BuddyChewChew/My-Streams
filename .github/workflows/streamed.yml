@@ -45,7 +45,6 @@ jobs:
           
           if [ -f StreamedSU.m3u8 ]; then
             git add StreamedSU.m3u8
-            # Only commit if the file actually changed
             if git diff --cached --quiet; then
               echo "No changes to commit"
             else
