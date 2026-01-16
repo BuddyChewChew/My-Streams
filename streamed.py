@@ -11,7 +11,7 @@ log = logging.getLogger("scraper")
 
 API_BASE = "https://a.streamed.pk/api"
 
-# Essential headers to avoid the JSON Decode Error (HTML block page)
+# Essential headers to avoid the JSON Decode Error
 API_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
     "Referer": "https://streamed.pk/",
@@ -19,10 +19,10 @@ API_HEADERS = {
     "Accept": "application/json, text/plain, */*"
 }
 
-# Your specific authorization headers for the video player
+# Updated headers to reflect the new domain
 PLAYER_HEADERS = {
-    "Origin": "https://embedsports.top",
-    "Referer": "https://embedsports.top/",
+    "Origin": "https://streamed.su",
+    "Referer": "https://streamed.su/",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 }
 
@@ -34,15 +34,13 @@ async def extract_m3u8(page, embed_url):
     async def handle_route(route):
         nonlocal found_url
         url = route.request.url
-        
-        # Block high-frequency tracking scripts found in job-logs
+        # Block tracking scripts
         if any(x in url for x in ["usrpubtrk.com", "doubleclick", "analytics", "telemetry"]):
             await route.abort()
         elif ".m3u8" in url and not found_url:
-            # Filter for the actual stream, excluding internal telemetry
             if all(x not in url.lower() for x in ["telemetry", "prd.jwpltx"]):
                 found_url = url
-                log.info(f"  ⚡ Captured: {url[:60]}...")
+                log.info(f"   ⚡ Captured: {url[:60]}...")
             await route.continue_()
         else:
             await route.continue_()
@@ -53,17 +51,16 @@ async def extract_m3u8(page, embed_url):
         await stealth.apply_stealth_async(page)
         await page.set_extra_http_headers(PLAYER_HEADERS)
         
-        log.info(f"  ↳ Probing Player: {embed_url[:50]}...")
+        log.info(f"   ↳ Probing Player: {embed_url}")
         await page.goto(embed_url, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(6)
+        await asyncio.sleep(8) 
 
-        # Interaction loop to bypass ad-overlays and trigger stream
+        # Interaction loop to bypass overlays
         for _ in range(3):
             if found_url: break
             await page.mouse.click(640 + random.randint(-15, 15), 360 + random.randint(-15, 15))
             await asyncio.sleep(3)
             
-            # Auto-close popup tabs triggered by clicks
             if len(page.context.pages) > 1:
                 for p in page.context.pages:
                     if p != page: await p.close()
@@ -75,7 +72,6 @@ async def extract_m3u8(page, embed_url):
 async def run():
     log.info("📡 Fetching Live Matches...")
     try:
-        # Step 1: Get Live Matches using API_HEADERS
         response = requests.get(f"{API_BASE}/matches/live", headers=API_HEADERS, timeout=20)
         if response.status_code != 200:
             log.error(f"❌ API Access Blocked: Status {response.status_code}")
@@ -92,49 +88,46 @@ async def run():
         browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
         context = await browser.new_context(viewport={'width': 1280, 'height': 720})
 
-        # Process first 10 live matches
-        for i, match in enumerate(matches[:10], 1):
+        # Process live matches
+        for i, match in enumerate(matches[:15], 1): # Increased to 15 matches
             title = match.get("title", "Match")
             match_id = match.get("id")
-            log.info(f"\n🎯 [{i}/10] {title}")
-
-            # Step 2: Fetch available sources for this match
-            try:
-                src_resp = requests.get(f"{API_BASE}/source/{match_id}", headers=API_HEADERS, timeout=10)
-                sources = src_resp.json()
-            except: continue
+            api_sources = match.get("sources", [])
+            log.info(f"\n🎯 [{i}] {title}")
 
             page = await context.new_page()
             found_stream = None
 
-            # Step 3: Provider-specific routing (Alpha, Delta, etc.)
-            for s in sources:
-                provider = s.get("source").lower()
-                sid = s.get("id")
-                try:
-                    stream_api = f"{API_BASE}/stream/{provider}/{sid}"
-                    res = requests.get(stream_api, headers=API_HEADERS, timeout=10).json()
-                    
-                    for item in res:
-                        embed_url = item.get("embedUrl")
-                        if embed_url:
-                            found_stream = await extract_m3u8(page, embed_url)
-                            if found_stream: break
-                except: continue
+            # INTEGRATED LOGIC FROM DIFF:
+            # Construct URLs based on sources provided in the match object
+            target_urls = []
+            if api_sources:
+                for src in api_sources:
+                    s_provider = src.get("source")
+                    s_id = src.get("id")
+                    if s_provider and s_id:
+                        target_urls.append(f"https://streamed.su/watch/{s_provider}/{s_id}")
+            
+            # Fallback URL (always try 'main' source if no other URL works or if no sources exist)
+            target_urls.append(f"https://streamed.su/watch/main/{match_id}")
+
+            # Try to capture from the generated URLs
+            for embed_url in target_urls:
+                found_stream = await extract_m3u8(page, embed_url)
                 if found_stream: break
             
             if found_stream:
                 playlist.append(f'#EXTINF:-1, {title}\n{found_stream}')
                 success += 1
-                log.info(f"  ✅ SUCCESS")
+                log.info(f"   ✅ SUCCESS")
             else:
-                log.info(f"  ❌ FAILED")
+                log.info(f"   ❌ FAILED")
             
             await page.close()
 
         await browser.close()
 
-    # Save playlist to file
+    # Save playlist
     with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
         f.write("\n".join(playlist))
     log.info(f"\n🎉 Finished. Total Streams: {success}")
