@@ -3,8 +3,15 @@ import requests
 import logging
 import os
 from playwright.async_api import async_playwright
-# Import the stealth module correctly
-import playwright_stealth
+
+# Robust stealth import handling
+try:
+    from playwright_stealth import stealth_async as stealth
+except ImportError:
+    try:
+        from playwright_stealth import stealth
+    except ImportError:
+        stealth = None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("scraper")
@@ -19,46 +26,43 @@ async def extract_m3u8(page, embed_url):
     async def intercept_request(request):
         nonlocal found_url
         url = request.url
-        # Look for master.m3u8 or index.m3u8 but skip known ad/telemetry domains
         if ".m3u8" in url and not found_url:
-            if all(x not in url.lower() for x in ["telemetry", "prd.jwpltx", "omtrdc", "logs", "doubleclick", "analytics"]):
+            if all(x not in url.lower() for x in ["telemetry", "prd.jwpltx", "omtrdc", "logs", "analytics"]):
                 found_url = url
                 log.info(f"  ⚡ Captured: {url[:70]}...")
 
     page.on("request", intercept_request)
 
     try:
-        # FIX: Call the function inside the module
-        await playwright_stealth.stealth_async(page)
+        # Apply stealth if available
+        if stealth:
+            try:
+                await stealth(page)
+            except:
+                pass
         
         await page.set_extra_http_headers({"Referer": "https://streami.su/"})
         
-        # Increase timeout and use 'commit' for faster response capture
-        await page.goto(embed_url, wait_until="domcontentloaded", timeout=45000)
-        
-        # Interaction 1: Click to clear overlays/ads
-        await asyncio.sleep(3)
-        await page.mouse.click(640, 360)
-        log.info("  👆 Interaction 1 (Bypass)")
+        # Use a slightly more aggressive wait for network calls
+        await page.goto(embed_url, wait_until="load", timeout=30000)
+        await asyncio.sleep(4)
 
-        # Close any popups that opened from the first click
+        # Interaction: Click to bypass overlays
+        await page.mouse.click(640, 360)
+        log.info("  👆 Interaction (Bypass)")
+
+        # Close popups
         for p in page.context.pages:
             if p != page: await p.close()
 
-        # Interaction 2: Double click to trigger player play
-        if not found_url:
-            await asyncio.sleep(2)
-            await page.mouse.dblclick(640, 360)
-            log.info("  ▶️ Interaction 2 (Play Trigger)")
-
-        # Wait loop to give the stream time to start
-        for _ in range(20):
+        # Final trigger loop
+        for _ in range(15):
             if found_url: break
             await asyncio.sleep(1)
 
         return found_url
     except Exception as e:
-        log.warning(f"  ⚠️ Error on {embed_url[:30]}: {str(e)[:40]}")
+        log.warning(f"  ⚠️ Error: {str(e)[:40]}")
         return None
 
 async def run():
@@ -76,21 +80,15 @@ async def run():
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-web-security"
-            ]
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"]
         )
         
-        # Use a single context for all pages to mimic a real session
         browser_context = await browser.new_context(
             viewport={'width': 1280, 'height': 720},
             user_agent=HEADERS["User-Agent"]
         )
 
-        # Process first 15 matches to ensure we stay under GitHub time limits
+        # Process top matches
         active_matches = matches[:15]
         for i, match in enumerate(active_matches, 1):
             title = match.get("title", "Unknown")
@@ -126,7 +124,6 @@ async def run():
 
         await browser.close()
 
-    # Always write the file, even if empty, to satisfy the YAML check
     with open("StreamedSU.m3u8", "w", encoding="utf-8") as f:
         f.write("\n".join(playlist))
     log.info(f"\n🎉 Finished. {success_count} streams added.")
