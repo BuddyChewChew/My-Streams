@@ -5,14 +5,11 @@ import random
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 
-# Stealth import with fallback
+# Corrected stealth import for modern playwright-stealth
 try:
-    from playwright_stealth import stealth_async as stealth
+    from playwright_stealth import stealth_async
 except ImportError:
-    try:
-        from playwright_stealth import stealth
-    except ImportError:
-        stealth = None
+    stealth_async = None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("scraper")
@@ -28,7 +25,8 @@ async def extract_m3u8(page, embed_url):
         nonlocal found_url
         url = request.url
         if ".m3u8" in url and not found_url:
-            if all(x not in url.lower() for x in ["telemetry", "logs", "analytics"]):
+            # Filter out noise like telemetry or ad-trackers
+            if all(x not in url.lower() for x in ["telemetry", "logs", "analytics", "doubleclick", "prd.jwpltx"]):
                 found_url = url
                 log.info(f"  ⚡ Captured: {url[:70]}...")
 
@@ -43,45 +41,42 @@ async def extract_m3u8(page, embed_url):
             "Origin": base_domain
         })
         
-        if stealth:
-            await stealth(page)
+        # Apply stealth using the correct function
+        if stealth_async:
+            await stealth_async(page)
 
         log.info(f"  ↳ Probing: {embed_url[:50]}...")
-        await page.goto(embed_url, wait_until="load", timeout=45000)
-        await asyncio.sleep(5)
-
-        # --- THE INTERACTION STRATEGY ---
-        # 1. Clear initial overlays
-        log.info("  👆 Attempting to trigger player...")
+        await page.goto(embed_url, wait_until="domcontentloaded", timeout=45000)
         
-        # We click a 3x3 grid in the center to ensure we hit the play button
-        # regardless of how the player is sized or if there are invisible ads.
-        search_grid = [
-            (640, 360), (600, 360), (680, 360),
-            (640, 320), (640, 400)
-        ]
+        # Initial wait for overlays to settle
+        await asyncio.sleep(6)
+
+        # --- THE GRID CLICK STRATEGY ---
+        # We click 5 points in the center to find the Play button
+        search_grid = [(640, 360), (600, 360), (680, 360), (640, 320), (640, 400)]
 
         for x, y in search_grid:
             if found_url: break
             await page.mouse.click(x, y)
-            await asyncio.sleep(1.5)
+            log.info(f"  👆 Click at ({x}, {y})")
+            await asyncio.sleep(2)
             
-            # Ad-Blocker Logic: Close any new tabs that opened from the click
+            # AD-REMOVAL: Close any new tabs that pop up immediately
             if len(page.context.pages) > 1:
                 for p in page.context.pages:
                     if p != page:
                         await p.close()
-                # Click again now that the ad is gone
+                # Re-click the original spot after closing the ad
                 await page.mouse.click(x, y)
 
-        # Final patience for the stream to initialize
-        for _ in range(10):
+        # Final loop to wait for the network request to appear
+        for _ in range(15):
             if found_url: break
             await asyncio.sleep(1)
 
         return found_url
     except Exception as e:
-        log.warning(f"  ⚠️ Error: {str(e)[:30]}")
+        log.warning(f"  ⚠️ Error: {str(e)[:40]}")
         return None
 
 async def run():
@@ -97,21 +92,17 @@ async def run():
     success_count = 0
 
     async with async_playwright() as p:
-        # Launch with 'real' browser flags
+        # Launch with flags to look like a real browser
         browser = await p.chromium.launch(
             headless=True, 
-            args=[
-                "--no-sandbox", 
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled"
-            ]
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"]
         )
         context = await browser.new_context(
             viewport={'width': 1280, 'height': 720},
             user_agent=HEADERS["User-Agent"]
         )
 
-        # Process top 10 matches
+        # Process top 10 matches for better reliability
         active_matches = matches[:10]
         for i, match in enumerate(active_matches, 1):
             title = match.get("title", "Unknown")
