@@ -14,12 +14,12 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: 🐍 Set up Python 3.11
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -33,7 +33,7 @@ jobs:
       - name: 🎯 Run scraping script
         run: python tv.py
 
-      - name: 💾 Commit & Safely Push if Playlist Changed
+      - name: 💾 Commit & Safely Push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -51,18 +51,10 @@ jobs:
 
           git commit -m "✅ Updated TheTVApp.m3u8 $(date -u +'%a %b %d %T UTC %Y')"
 
-          # Small random delay to reduce collisions
-          sleep $((RANDOM % 10 + 5))
-
-          # Safe push, fallback merge if rejected
+          # Attempt to push. If it fails, pull with a strategy that 
+          # favors our newly scraped file during conflicts.
           if ! git push origin main; then
-            echo "⚠️ Push rejected. Trying safe fetch + merge..."
-            git pull origin main --rebase || {
-              echo "❌ Rebase failed. Exiting to avoid corruption."
-              exit 1
-            }
-            git push origin main || {
-              echo "❌ Second push failed. Remote changed again."
-              exit 1
-            }
+            echo "⚠️ Push rejected. Resolving conflicts by favoring new scrape..."
+            git pull origin main --rebase -X theirs
+            git push origin main
           fi
