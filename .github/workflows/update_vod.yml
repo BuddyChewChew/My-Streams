@@ -2,8 +2,8 @@ name: Update VOD Playlist
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Runs daily at midnight
-  workflow_dispatch: # Allows manual trigger
+    - cron: '0 0 * * *' # Runs daily
+  workflow_dispatch: # Allows manual run
 
 jobs:
   build:
@@ -16,7 +16,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.x'
+        python-version: '3.10'
 
     - name: Install dependencies
       run: |
@@ -24,11 +24,14 @@ jobs:
         pip install requests beautifulsoup4
 
     - name: Run Scraper
+      env:
+        # This maps your GitHub Secret to an environment variable the script can read
+        OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
       run: python scraper.py
 
     - name: Commit and push changes
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
         git add vod/movies.m3u
-        git diff --quiet && git diff --staged --quiet || (git commit -m "Update VOD playlist" && git push)
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Update VOD movies with posters" && git push)
