@@ -5,9 +5,10 @@ from xml.dom import minidom
 def generate_multi_channel_epg():
     # 1. Configuration: Add your default logo URL here
     DEFAULT_LOGO = "https://github.com/BuddyChewChew/My-Streams/blob/main/Backup/dummy-logos/default.png?raw=true"
+    INFO_LOGO = "https://github.com/BuddyChewChew/My-Streams/blob/main/Backup/dummy-logos/info.png?raw=true"
     
     channels = [
-        {"id": "INFO.bud", "name": "INFO CHANNEL", "logo": DEFAULT_LOGO},
+        {"id": "INFO.bud", "name": "INFO CHANNEL", "logo": INFO_LOGO},
         {"id": "Fishing.bud", "name": "Fishing", "logo": DEFAULT_LOGO},
         {"id": "Movie.bud", "name": "Movie", "logo": DEFAULT_LOGO},
         {"id": "News.24.7.bud", "name": "News 24/7", "logo": DEFAULT_LOGO},
@@ -22,7 +23,7 @@ def generate_multi_channel_epg():
     ]
     
     CUSTOM_MESSAGES = [
-        "Enjoy this FREE playlist. Happy Streaming! 😜",
+        "(CC)=CORDCUTTER ● (KSTV)=KSTV ● (PTV)=PEAKYTV",
         "Discord: https://discord.gg/fnsWGDy2mm",
         ""
     ]
@@ -55,7 +56,7 @@ def generate_multi_channel_epg():
             stop_str = prog_stop.strftime('%Y%m%d%H%M%S +0000')
             
             prog = ET.SubElement(tv, 'programme', start=start_str, stop=stop_str, channel=ch["id"])
-            ET.SubElement(prog, 'title', lang="en").text = "Added WhiplashTV and will be adding more channels." 
+            ET.SubElement(prog, 'title', lang="en").text = "Added WhiplashTV Adult Channels and testing a new source for LIVE TV." 
             # Description now only contains the custom messages
             full_description = "\n".join(CUSTOM_MESSAGES)
             ET.SubElement(prog, 'desc', lang="en").text = full_description
