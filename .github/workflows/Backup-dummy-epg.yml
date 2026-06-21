@@ -29,6 +29,6 @@ jobs:
         run: |
           git config --global user.name "actions-user"
           git config --global user.email "actions@github.com"
-          git add Backup/epg.xml Backup/epg_ids.txt
-          git diff --staged --quiet || git commit -m "🔄 Update dummy EPG"
+          git add Backup/epg.xml Backup/epg_ids.txt Backup/merged-epg.xml.gz
+          git diff --staged --quiet || git commit -m "🔄 Update dummy EPG + merged EPG"
           git push --force
