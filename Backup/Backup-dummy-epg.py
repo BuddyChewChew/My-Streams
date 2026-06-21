@@ -16,7 +16,7 @@ def generate_multi_channel_epg():
         {"id": "Movie.bud", "name": "Movie", "logo": DEFAULT_LOGO},
         {"id": "News.24.7.bud", "name": "News 24/7", "logo": DEFAULT_LOGO},
         {"id": "Outdoors.bud", "name": "Outdoors", "logo": DEFAULT_LOGO},
-        {"id": "iheart.bud", "name": "IHeart", "logo": IHEART_LOGO},
+        {"id": "iheart.bud", "name": "iHeart Radio", "logo": IHEART_LOGO},
         {"id": "Channel6.bud", "name": "Channel Name 6", "logo": DEFAULT_LOGO},
         {"id": "Channel7.bud", "name": "Channel Name 7", "logo": DEFAULT_LOGO},
         {"id": "Channel8.bud", "name": "Channel Name 8", "logo": DEFAULT_LOGO},
