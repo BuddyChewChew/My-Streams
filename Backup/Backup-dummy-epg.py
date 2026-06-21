@@ -7,10 +7,10 @@ from xml.dom import minidom
 def generate_multi_channel_epg():
     # 1. Configuration: Add your default logo URL here
     DEFAULT_LOGO = "https://github.com/BuddyChewChew/My-Streams/blob/main/Backup/dummy-logos/default.png?raw=true"
-    INFO_LOGO = "https://github.com/BuddyChewChew/My-Streams/blob/main/Backup/dummy-logos/info.png?raw=true"
+    BUD_LOGO = "https://github.com/BuddyChewChew/My-Streams/blob/main/Backup/dummy-logos/info.png?raw=true"
     
     channels = [
-        {"id": "INFO.bud", "name": "INFO CHANNEL", "logo": INFO_LOGO},
+        {"id": "bud.bud", "name": "INFO CHANNEL", "logo": BUD_LOGO},
         {"id": "Fishing.bud", "name": "Fishing", "logo": DEFAULT_LOGO},
         {"id": "Movie.bud", "name": "Movie", "logo": DEFAULT_LOGO},
         {"id": "News.24.7.bud", "name": "News 24/7", "logo": DEFAULT_LOGO},
@@ -51,7 +51,7 @@ def generate_multi_channel_epg():
     base_start = now_utc.replace(minute=0, second=0, microsecond=0)
     
     for ch in channels:
-        if ch["id"] == "INFO.bud":
+        if ch["id"] == "bud.bud":
             prog_start = base_start
             prog_stop = base_start + datetime.timedelta(hours=24)
             start_str = prog_start.strftime('%Y%m%d%H%M%S +0000')
