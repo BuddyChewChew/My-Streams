@@ -5,7 +5,7 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 
 M3U8_FILE = "TheTVApp.m3u8"
-BASE_URL = "https://thetvapp.to"
+BASE_URL = "https://thetvapptv.com"
 CHANNEL_LIST_URL = f"{BASE_URL}/tv"
 
 SECTIONS_TO_APPEND = {
