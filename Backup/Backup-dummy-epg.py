@@ -8,6 +8,7 @@ def generate_multi_channel_epg():
     # 1. Configuration: Add your default logo URL here
     DEFAULT_LOGO = "https://github.com/BuddyChewChew/My-Streams/blob/main/Backup/dummy-logos/default.png?raw=true"
     BUD_LOGO = "https://github.com/BuddyChewChew/My-Streams/blob/main/Backup/dummy-logos/info.png?raw=true"
+    IHEART_LOGO = "https://github.com/BuddyChewChew/My-Streams/blob/main/Backup/dummy-logos/iheart.png?raw=true"
     
     channels = [
         {"id": "bud.bud", "name": "6-20-26 Update", "logo": BUD_LOGO},
@@ -15,7 +16,7 @@ def generate_multi_channel_epg():
         {"id": "Movie.bud", "name": "Movie", "logo": DEFAULT_LOGO},
         {"id": "News.24.7.bud", "name": "News 24/7", "logo": DEFAULT_LOGO},
         {"id": "Outdoors.bud", "name": "Outdoors", "logo": DEFAULT_LOGO},
-        {"id": "Channel5.bud", "name": "Channel Name 5", "logo": DEFAULT_LOGO},
+        {"id": "iheart.bud", "name": "IHeart", "logo": IHEART_LOGO},
         {"id": "Channel6.bud", "name": "Channel Name 6", "logo": DEFAULT_LOGO},
         {"id": "Channel7.bud", "name": "Channel Name 7", "logo": DEFAULT_LOGO},
         {"id": "Channel8.bud", "name": "Channel Name 8", "logo": DEFAULT_LOGO},
