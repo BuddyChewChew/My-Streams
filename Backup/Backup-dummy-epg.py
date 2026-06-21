@@ -25,7 +25,7 @@ def generate_multi_channel_epg():
     ]
     
     CUSTOM_MESSAGES = [
-        "ENJOY SOME FREE TV,
+        "ENJOY SOME FREE TV",
         "Discord: https://discord.gg/fnsWGDy2mm",
         ""
     ]
