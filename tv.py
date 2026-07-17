@@ -1,7 +1,7 @@
 import asyncio
 import urllib.parse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from playwright.async_api import async_playwright
 
 M3U8_FILE = "TheTVApp.m3u8"
@@ -189,7 +189,7 @@ async def scrape_all_sports_sections():
 
 def clean_m3u_header(lines):
     lines = [line for line in lines if not line.strip().startswith("#EXTM3U")]
-    timestamp = int(datetime.utcnow().timestamp())
+    timestamp = int(datetime.now(timezone.utc).timestamp())
     lines.insert(0, f'#EXTM3U url-tvg="https://tvpass.org/epg.xml" # Updated: {timestamp}')
     return lines
 
