@@ -1,8 +1,8 @@
 import datetime
 import gzip
-import urllib.request
-import xml.etree.ElementTree as ET
-from xml.dom import minidom
+import requests
+import defusedxml.ElementTree as ET
+from defusedxml import minidom
 
 def generate_multi_channel_epg():
     # 1. Configuration: Add your default logo URL here
@@ -98,9 +98,9 @@ def merge_epgs():
 
     # 1. Download the remote gzip EPG
     print(f"Downloading {LIGHT_EPG_URL} ...")
-    req = urllib.request.Request(LIGHT_EPG_URL, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=60) as response:
-        compressed_data = response.read()
+    response = requests.get(LIGHT_EPG_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=60)
+    response.raise_for_status()
+    compressed_data = response.content
 
     # 2. Decompress and parse it
     xml_bytes = gzip.decompress(compressed_data)
