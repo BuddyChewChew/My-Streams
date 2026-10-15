@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BUDDY TV</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Roboto', sans-serif; background-color: #121212; color: #ffffff; }
+        .container { display: flex; height: 100%; overflow: hidden; flex-direction: row; background-color: #181818; }
+        .sidebar { width: 250px; background-color: #1e1e1e; overflow-y: auto; padding: 20px; box-shadow: 2px 0 5px rgba(0,0,0,0.5); border-right: 1px solid #444; height: 100%; }
+        .main-content { flex-grow: 1; padding: 20px; display: flex; flex-direction: column; overflow: hidden; height: 100%; }
+        .video-container { position: relative; height: calc(100vh - 100px); overflow: hidden; background-color: #000; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); border: 2px solid #444; }
+        #videoPlayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 10px; }
+        .channel-item { padding: 12px; margin-bottom: 10px; background-color: #2a2a2a; border-radius: 5px; cursor: pointer; transition: background-color 0.3s, transform 0.2s; display: flex; justify-content: space-between; align-items: center; }
+        .channel-item:hover { background-color: #3a3a3a; transform: scale(1.02); }
+        .channel-item.active { background-color: #3a3a3a; border-left: 4px solid #00ff00; }
+        .channel-group { margin-bottom: 20px; }
+        h1, h2 { color: #ffffff; }
+        #videoTitle { margin-top: 10px; font-size: 24px; }
+        #channelList { max-height: calc(100vh - 100px); overflow-y: auto; }
+        ::-webkit-scrollbar { width: 12px; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background-color: #4a4a4a; border-radius: 10px; border: 3px solid #1e1e1e; }
+        ::-webkit-scrollbar-thumb:hover { background-color: #5a5a56; }
+        #loadingIndicator { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; color: #ffffff; font-size: 20px; background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 5px; }
+        #errorMessage { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: none; color: #ff0000; font-size: 16px; text-align: center; padding: 10px; background: rgba(0,0,0,0.7); border-radius: 5px; }
+        #applaudingMessage { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: none; color: #00ff00; font-size: 16px; text-align: center; padding: 10px; background: rgba(0,0,0,0.7); border-radius: 5px; }
+        .epg-item { padding: 10px; border-bottom: 1px solid #333; }
+        .epg-item strong { font-weight: bold; }
+        .channel-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+        .channel-logo { width: 24px; height: 24px; border-radius: 4px; margin-left: 8px; flex-shrink: 0; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>Channels</h2>
+            <div id="channelList"></div>
+        </div>
+        <div class="main-content">
+            <div id="epgContainer"></div>
+            <h2 id="videoTitle">Select a channel</h2>
+            <div class="video-container">
+                <video id="videoPlayer" controls autoplay playsinline></video>
+                <div id="loadingIndicator">Loading stream...</div>
+                <div id="errorMessage">Failed to load stream. Please try another channel.</div>
+                <div id="applaudingMessage">Stream loaded successfully!</div>
+            </div>
+        </div>
+    </div>
+    <script>
+        let channels = [];
+        let currentHls = null;
+        let messageShown = false;
+        let activeChannelElement = null;
+
+        function fetchM3U() {
+            const m3uUrl = 'https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/refs/heads/main/playlists/plutotv_us.m3u';
+            fetch(m3uUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch M3U playlist: ' + response.status);
+                    }
+                    return response.text();
+                })
+                .then(data => parseM3U(data))
+                .catch(error => {
+                    console.error('Error fetching M3U file:', error);
+                    document.getElementById('errorMessage').textContent = 'Failed to load channel list.';
+                    document.getElementById('errorMessage').style.display = 'block';
+                });
+        }
+
+        function parseM3U(data) {
+            console.log('Parsing M3U data...');
+            const lines = data.split('\n');
+            let currentChannel = {};
+            lines.forEach(line => {
+                line = line.trim();
+                if (line.startsWith('#EXTINF:')) {
+                    const lastComma = line.lastIndexOf(',');
+                    currentChannel.title = lastComma !== -1 ? line.substring(lastComma + 1).trim() : 'Untitled Channel';
+                    const logoMatch = line.match(/tvg-logo="([^"]+)"/);
+                    currentChannel.logo = logoMatch ? logoMatch[1] : '';
+                    const groupMatch = line.match(/group-title="([^"]+)"/);
+                    currentChannel.group = groupMatch ? groupMatch[1] : 'Other';
+                } else if (line !== '' && !line.startsWith('#')) {
+                    currentChannel.url = line.trim();
+                    channels.push(currentChannel);
+                    currentChannel = {};
+                }
+            });
+            console.log('Channels parsed:', channels.length);
+            displayChannels();
+        }
+
+        function displayChannels() {
+            const channelList = document.getElementById('channelList');
+            channelList.innerHTML = '';
+            const groups = {};
+            channels.forEach(channel => {
+                const group = channel.group || 'Other';
+                if (!groups[group]) groups[group] = [];
+                groups[group].push(channel);
+            });
+            Object.keys(groups).sort().forEach(groupName => {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'channel-group';
+                const groupHeader = document.createElement('h3');
+                groupHeader.textContent = groupName;
+                groupHeader.style.color = '#aaa';
+                groupHeader.style.margin = '0 0 10px 0';
+                groupHeader.style.fontSize = '14px';
+                groupDiv.appendChild(groupHeader);
+                groups[groupName].forEach(channel => {
+                    const channelItem = document.createElement('div');
+                    channelItem.className = 'channel-item';
+                    channelItem.onclick = () => playChannel(channel, channelItem);
+                    const titleSpan = document.createElement('span');
+                    titleSpan.className = 'channel-title';
+                    titleSpan.textContent = channel.title;
+                    channelItem.appendChild(titleSpan);
+                    if (channel.logo) {
+                        const img = document.createElement('img');
+                        img.className = 'channel-logo';
+                        img.src = channel.logo;
+                        img.alt = '';
+                        channelItem.appendChild(img);
+                    }
+                    groupDiv.appendChild(channelItem);
+                });
+                channelList.appendChild(groupDiv);
+            });
+        }
+
+        function setActiveChannel(element) {
+            if (activeChannelElement) {
+                activeChannelElement.classList.remove('active');
+            }
+            activeChannelElement = element;
+            if (activeChannelElement) {
+                activeChannelElement.classList.add('active');
+            }
+        }
+
+        function destroyHls() {
+            if (currentHls) {
+                currentHls.destroy();
+                currentHls = null;
+            }
+        }
+
+        function playChannel(channel, element) {
+            const videoPlayer = document.getElementById('videoPlayer');
+            const videoTitle = document.getElementById('videoTitle');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const errorMessage = document.getElementById('errorMessage');
+            const applaudingMessage = document.getElementById('applaudingMessage');
+
+            setActiveChannel(element);
+            videoTitle.textContent = channel.title;
+            loadingIndicator.style.display = 'block';
+            errorMessage.style.display = 'none';
+            applaudingMessage.style.display = 'none';
+            messageShown = false;
+
+            destroyHls();
+
+            const url = channel.url;
+
+            if (Hls.isSupported()) {
+                const hls = new Hls({
+                    enableWorker: false,
+                    enableSoftwareAES: true
+                });
+                currentHls = hls;
+                hls.loadSource(url);
+                hls.attachMedia(videoPlayer);
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    loadingIndicator.style.display = 'none';
+                    errorMessage.style.display = 'none';
+                    if (!messageShown) {
+                        applaudingMessage.style.display = 'block';
+                        setTimeout(() => { applaudingMessage.style.display = 'none'; messageShown = false; }, 3000);
+                        messageShown = true;
+                    }
+                    return videoPlayer.play().catch(err => {
+                        console.warn('Autoplay blocked by browser:', err);
+                    });
+                });
+                hls.on(Hls.Events.LEVEL_LOADED, function() {
+                    loadingIndicator.style.display = 'none';
+                    errorMessage.style.display = 'none';
+                });
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    console.error('Hls error:', data);
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                loadingIndicator.style.display = 'none';
+                                errorMessage.style.display = 'block';
+                                errorMessage.textContent = 'Stream error: ' + (data.details || 'unknown error');
+                                break;
+                        }
+                    } else {
+                        console.warn('Hls non-fatal error:', data.details);
+                    }
+                });
+            } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                videoPlayer.src = url;
+                videoPlayer.addEventListener('loadedmetadata', function loaded() {
+                    videoPlayer.removeEventListener('loadedmetadata', loaded);
+                    loadingIndicator.style.display = 'none';
+                    errorMessage.style.display = 'none';
+                    if (!messageShown) {
+                        applaudingMessage.style.display = 'block';
+                        setTimeout(() => { applaudingMessage.style.display = 'none'; messageShown = false; }, 3000);
+                        messageShown = true;
+                    }
+                    return videoPlayer.play().catch(err => {
+                        console.warn('Autoplay blocked by browser:', err);
+                    });
+                });
+                videoPlayer.addEventListener('error', () => {
+                    loadingIndicator.style.display = 'none';
+                    errorMessage.style.display = 'block';
+                });
+            } else {
+                errorMessage.style.display = 'block';
+                errorMessage.textContent = 'Your browser does not support HLS playback.';
+                loadingIndicator.style.display = 'none';
+            }
+        }
+
+        function fetchEPG(channelUrl) {
+            console.log('EPG fetch not implemented for URL:', channelUrl);
+        }
+
+        function parseEPG(data) {
+            const epgContainer = document.getElementById('epgContainer');
+            epgContainer.innerHTML = '';
+            if (!data || data.length === 0) {
+                epgContainer.innerHTML = '<p>No EPG data available.</p>';
+                return;
+            }
+            data.forEach(program => {
+                const programItem = document.createElement('div');
+                programItem.className = 'epg-item';
+                programItem.innerHTML = `<strong>${program.channel || 'Unknown'}</strong>: ${program.title || 'Unknown'} (${program.start_time || ''})`;
+                epgContainer.appendChild(programItem);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchM3U);
+    </script>
+</body>
+</html>
